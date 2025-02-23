@@ -1,10 +1,12 @@
-version: '3.8'
+# version: '3.8'
 
 services:
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    networks:
+      - shared_network
     ports:
       - "3010:3000"
     volumes:
@@ -17,6 +19,8 @@ services:
 
   backend:
     build: ./backend
+    networks:
+      - shared_network
     volumes:
       - ./backend:/app
     ports:
@@ -32,6 +36,8 @@ services:
 
   postgres:
     image: postgres:16
+    networks:
+      - shared_network
     environment:
       POSTGRES_DB: webapp2
       POSTGRES_USER: postgres
@@ -48,3 +54,7 @@ services:
 
 volumes:
   postgres_data: 
+
+networks:
+  shared_network:
+    external: true
