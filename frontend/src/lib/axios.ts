@@ -13,14 +13,29 @@ instance.interceptors.request.use((config) => {
     config.headers.Authorization = `Token ${token}`;
   }
   
-  // Add /api prefix to all requests
-  if (config.url && !config.url.startsWith('/api')) {
-    config.url = `/api${config.url}`;
+  // Add /api prefix to all requests if not already present
+  if (config.url) {
+    // Remove any leading slashes
+    const cleanUrl = config.url.replace(/^\/+/, '');
+    // Add api prefix if not present
+    if (!cleanUrl.startsWith('api/')) {
+      config.url = `api/${cleanUrl}`;
+    }
   }
 
-  if (config.url) {
-    console.log("Request URL:", new URL(config.url, config.baseURL || "").toString());
-  }
+  // Log the full URL for debugging
+  const fullUrl = new URL(
+    config.url || '', 
+    config.baseURL || window.location.origin
+  ).toString();
+  console.log("Making request to:", fullUrl);
+  console.log("Request config:", {
+    method: config.method,
+    url: config.url,
+    baseURL: config.baseURL,
+    headers: config.headers
+  });
+
   return config;
 });
 
