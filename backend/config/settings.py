@@ -91,6 +91,7 @@ SPECTACULAR_SETTINGS = {
 
 CORS_ALLOWED_ORIGINS = [
     "https://bowlsman.fridaydigital.co.uk",
+    "http://localhost:3010",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

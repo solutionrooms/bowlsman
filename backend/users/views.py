@@ -2,13 +2,14 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
-from .serializers import UserSerializer, CompetitionSerializer, CompetitionUserSerializer
-from .models import Competition, CompetitionUser
+from .serializers import UserSerializer, CompetitionSerializer, CompetitionUserSerializer, CompetitionScheduleSerializer
+from .models import Competition, CompetitionUser, CompetitionSchedule
 import logging
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,12 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     def add_player(self, request, pk=None):
         competition = self.get_object()
         
+        if competition.status == 'scheduled':
+            return Response(
+                {"error": "Cannot add players to a scheduled competition"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         if competition.is_full:
             return Response(
                 {"error": "Competition is full"}, 
@@ -121,18 +128,13 @@ class CompetitionViewSet(viewsets.ModelViewSet):
                     user=user
                 )
             else:
-                # If guest_name not provided, generate one
-                if not guest_name:
-                    guest_count = CompetitionUser.objects.filter(
-                        competition=competition,
-                        guest_name__startswith="Guest "
-                    ).count()
-                    guest_name = f"Guest {guest_count + 1}"
-                
                 competition_user = CompetitionUser.objects.create(
                     competition=competition,
                     guest_name=guest_name
                 )
+            
+            # Update competition status
+            competition.update_status()
             
             serializer = CompetitionUserSerializer(competition_user)
             return Response(serializer.data)
@@ -151,6 +153,13 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['delete'])
     def remove_player(self, request, pk=None):
         competition = self.get_object()
+        
+        if competition.status == 'scheduled':
+            return Response(
+                {"error": "Cannot remove players from a scheduled competition"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
         player_id = request.query_params.get('player_id')
         
         try:
@@ -159,6 +168,10 @@ class CompetitionViewSet(viewsets.ModelViewSet):
                 competition=competition
             )
             player.delete()
+            
+            # Update competition status
+            competition.update_status()
+            
             return Response(status=status.HTTP_204_NO_CONTENT)
         except CompetitionUser.DoesNotExist:
             return Response(
@@ -166,38 +179,50 @@ class CompetitionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-    @action(detail=True, methods=['post'])
-    def reorder_players(self, request, pk=None):
+    @action(detail=True, methods=['get'])
+    def schedule(self, request, pk=None):
+        """Get the schedule for a competition"""
         competition = self.get_object()
-        player_orders = request.data.get('player_orders', [])
+        schedules = CompetitionSchedule.objects.filter(competition=competition).order_by('round')
+        serializer = CompetitionScheduleSerializer(schedules, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['delete'])
+    def delete_schedule(self, request, pk=None):
+        """Delete the entire schedule for a competition"""
+        competition = self.get_object()
+        CompetitionSchedule.objects.filter(competition=competition).delete()
+        competition.update_status()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'])
+    def create_schedule(self, request, pk=None):
+        """Create a schedule for a competition"""
+        competition = self.get_object()
+        
+        # Check if competition is full
+        if not competition.is_full:
+            return Response(
+                {'error': 'Cannot create schedule for competition that is not full'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get all players in order
+        players = list(competition.competition_users.all().order_by('order'))
         
         try:
-            for order_data in player_orders:
-                player_id = order_data.get('id')
-                new_order = order_data.get('order')
-                
-                if player_id is None or new_order is None:
-                    continue
-                    
-                try:
-                    player = CompetitionUser.objects.get(
-                        id=player_id,
-                        competition=competition
-                    )
-                    player.order = new_order
-                    player.save()
-                except CompetitionUser.DoesNotExist:
-                    continue
+            # Create schedule based on rule type
+            create_dummy_schedule(competition, players)
             
-            # Refresh the competition to get updated player order
-            competition = self.get_object()
-            serializer = self.get_serializer(competition)
+            # Return the created schedule
+            schedules = CompetitionSchedule.objects.filter(competition=competition)
+            serializer = CompetitionScheduleSerializer(schedules, many=True)
             return Response(serializer.data)
             
         except Exception as e:
             return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 class CompetitionUserViewSet(viewsets.ModelViewSet):
@@ -206,4 +231,87 @@ class CompetitionUserViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return CompetitionUser.objects.filter(competition__creator=self.request.user) 
+        return CompetitionUser.objects.filter(competition__creator=self.request.user)
+
+def create_dummy_schedule(competition, players):
+    """
+    Creates a basic schedule where each player gets to play at least one game.
+    This is a temporary implementation that will be replaced with proper scheduling logic.
+    """
+    # Delete any existing schedule for this competition
+    CompetitionSchedule.objects.filter(competition=competition).delete()
+    
+    # Shuffle players to randomize teams
+    shuffled_players = list(players)
+    random.shuffle(shuffled_players)
+    
+    # Create rounds until each player has played at least once
+    round_num = 1
+    remaining_players = set(players)
+    
+    while remaining_players:
+        # Take 8 players for this round (or all remaining if less than 8)
+        round_players = shuffled_players[:8]
+        if len(round_players) < 8:
+            # If we don't have enough players, reuse some from the start
+            round_players.extend(shuffled_players[:(8 - len(round_players))])
+        
+        # Create the schedule for this round
+        CompetitionSchedule.objects.create(
+            competition=competition,
+            round=round_num,
+            side_1_player_1=round_players[0],
+            side_1_player_2=round_players[1],
+            side_1_player_3=round_players[2],
+            side_1_player_4=round_players[3],
+            side_2_player_1=round_players[4],
+            side_2_player_2=round_players[5],
+            side_2_player_3=round_players[6],
+            side_2_player_4=round_players[7]
+        )
+        
+        # Remove these players from remaining_players
+        remaining_players -= set(round_players[:8])
+        
+        # Rotate the players list for next round
+        shuffled_players = shuffled_players[8:] + shuffled_players[:8]
+        round_num += 1
+
+    # Update competition status
+    competition.status = 'scheduled'
+    competition.save()
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def create_schedule(request, competition_id):
+    try:
+        competition = Competition.objects.get(pk=competition_id)
+        
+        # Check if competition is full
+        if not competition.is_full:
+            return Response(
+                {'error': 'Cannot create schedule for competition that is not full'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get all players in order
+        players = list(competition.competition_users.all().order_by('order'))
+        
+        # Create schedule based on rule type
+        create_dummy_schedule(competition, players)
+        
+        # Return the created schedule
+        schedules = CompetitionSchedule.objects.filter(competition=competition)
+        serializer = CompetitionScheduleSerializer(schedules, many=True)
+        return Response(serializer.data)
+        
+    except Competition.DoesNotExist:
+        return Response(
+            {'error': 'Competition not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        ) 

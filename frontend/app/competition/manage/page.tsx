@@ -35,6 +35,22 @@ interface Competition {
   is_full: boolean;
   players: Player[];
   available_slots: number;
+  status: 'open' | 'full' | 'scheduled';
+}
+
+interface CompetitionSchedule {
+  id: number;
+  competition: number;
+  round: number;
+  created_at: string;
+  side_1_player_1: number;
+  side_1_player_2: number;
+  side_1_player_3: number;
+  side_1_player_4: number;
+  side_2_player_1: number;
+  side_2_player_2: number;
+  side_2_player_3: number;
+  side_2_player_4: number;
 }
 
 const reorder = (list: Player[], startIndex: number, endIndex: number): Player[] => {
@@ -52,6 +68,8 @@ export default function ManageCompetitions() {
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [editingCompetition, setEditingCompetition] = useState<Competition | null>(null);
   const [managingPlayers, setManagingPlayers] = useState<Competition | null>(null);
+  const [viewingSchedule, setViewingSchedule] = useState<Competition | null>(null);
+  const [schedules, setSchedules] = useState<CompetitionSchedule[]>([]);
   const [newPlayerName, setNewPlayerName] = useState('');
   const [error, setError] = useState('');
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -244,6 +262,54 @@ export default function ManageCompetitions() {
     }
   };
 
+  const handleSchedule = async (competition: Competition) => {
+    try {
+      const response = await api.post<CompetitionSchedule[]>(`/competitions/${competition.id}/create_schedule/`);
+      alert(`Schedule created successfully! ${response.data.length} rounds created.`);
+      
+      // Fetch fresh competition data to get updated status
+      const updatedCompResponse = await api.get<Competition>(`/competitions/${competition.id}/`);
+      setCompetitions(competitions.map(comp => 
+        comp.id === competition.id ? updatedCompResponse.data : comp
+      ));
+    } catch (error) {
+      console.error('Error creating schedule:', error);
+      alert('Failed to create schedule');
+    }
+  };
+
+  const handleViewSchedule = async (competition: Competition) => {
+    try {
+      const response = await api.get<CompetitionSchedule[]>(`/competitions/${competition.id}/schedule/`);
+      setSchedules(response.data);
+      setViewingSchedule(competition);
+    } catch (error) {
+      console.error('Error fetching schedule:', error);
+      alert('Failed to fetch schedule');
+    }
+  };
+
+  const handleDeleteSchedule = async (competition: Competition) => {
+    if (!confirm('Are you sure you want to delete this schedule?')) return;
+
+    try {
+      await api.delete(`/competitions/${competition.id}/delete_schedule/`);
+      setCompetitions(competitions.map(comp => 
+        comp.id === competition.id ? { ...comp, status: 'full' } : comp
+      ));
+      setViewingSchedule(null);
+      setSchedules([]);
+    } catch (error) {
+      console.error('Error deleting schedule:', error);
+      alert('Failed to delete schedule');
+    }
+  };
+
+  const getPlayerName = (playerId: number, competition: Competition) => {
+    const player = competition.players.find(p => p.id === playerId);
+    return player?.username || 'Unknown Player';
+  };
+
   if (!user) {
     return <div>Loading...</div>;
   }
@@ -257,7 +323,8 @@ export default function ManageCompetitions() {
           <div className="bg-white shadow rounded-lg p-6">
             <h1 className="text-2xl font-bold mb-6">Manage Competitions</h1>
             
-            <div className="overflow-x-auto">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -289,7 +356,9 @@ export default function ManageCompetitions() {
                         {competition.rule_set_id}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {(competition.num_players - competition.available_slots) > competition.num_players ? (
+                        {competition.status === 'scheduled' ? (
+                          <span className="text-purple-600 font-bold">Scheduled</span>
+                        ) : (competition.num_players - competition.available_slots) > competition.num_players ? (
                           <span className="text-red-600 font-bold">Too Many Players</span>
                         ) : competition.is_full ? (
                           <span className="text-green-600 font-bold">Full</span>
@@ -310,6 +379,30 @@ export default function ManageCompetitions() {
                         >
                           Edit
                         </button>
+                        {competition.is_full && competition.status !== 'scheduled' && (
+                          <button
+                            onClick={() => handleSchedule(competition)}
+                            className="text-green-600 hover:text-green-900 mr-4"
+                          >
+                            Schedule
+                          </button>
+                        )}
+                        {competition.status === 'scheduled' && (
+                          <>
+                            <button
+                              onClick={() => handleViewSchedule(competition)}
+                              className="text-green-600 hover:text-green-900 mr-4"
+                            >
+                              View Schedule
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSchedule(competition)}
+                              className="text-yellow-600 hover:text-yellow-900 mr-4"
+                            >
+                              Delete Schedule
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => handleDelete(competition.id)}
                           className="text-red-600 hover:text-red-900"
@@ -322,6 +415,147 @@ export default function ManageCompetitions() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-4">
+              {competitions.map(competition => (
+                <div key={competition.id} className="bg-white shadow rounded-lg p-4 border border-gray-200">
+                  <div className="flex justify-between items-start mb-4">
+                    <h3 className="text-lg font-medium text-gray-900">{competition.name}</h3>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleManagePlayers(competition)}
+                        className="text-blue-600 hover:text-blue-900"
+                      >
+                        Players
+                      </button>
+                      <button
+                        onClick={() => handleEdit(competition)}
+                        className="text-indigo-600 hover:text-indigo-900"
+                      >
+                        Edit
+                      </button>
+                      {competition.is_full && competition.status !== 'scheduled' && (
+                        <button
+                          onClick={() => handleSchedule(competition)}
+                          className="text-green-600 hover:text-green-900"
+                        >
+                          Schedule
+                        </button>
+                      )}
+                      {competition.status === 'scheduled' && (
+                        <>
+                          <button
+                            onClick={() => handleViewSchedule(competition)}
+                            className="text-green-600 hover:text-green-900"
+                          >
+                            View Schedule
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSchedule(competition)}
+                            className="text-yellow-600 hover:text-yellow-900"
+                          >
+                            Delete Schedule
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => handleDelete(competition.id)}
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Created:</span>
+                      <span className="text-gray-900">{new Date(competition.created_at).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Players:</span>
+                      <span className="text-gray-900">
+                        {competition.num_players - competition.available_slots}/{competition.num_players}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Creator:</span>
+                      <span className="text-gray-900">{competition.creator_name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Rule Set:</span>
+                      <span className="text-gray-900">{competition.rule_set_id}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Status:</span>
+                      <span className={`font-medium ${
+                        competition.status === 'scheduled'
+                          ? 'text-purple-600'
+                          : (competition.num_players - competition.available_slots) > competition.num_players
+                          ? 'text-red-600'
+                          : competition.is_full
+                          ? 'text-green-600'
+                          : 'text-gray-900'
+                      }`}>
+                        {competition.status === 'scheduled'
+                          ? 'Scheduled'
+                          : (competition.num_players - competition.available_slots) > competition.num_players
+                          ? 'Too Many Players'
+                          : competition.is_full
+                          ? 'Full'
+                          : `${competition.available_slots} slots left`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Schedule View Modal */}
+            {viewingSchedule && (
+              <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
+                <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold">Schedule for {viewingSchedule.name}</h2>
+                    <button
+                      onClick={() => setViewingSchedule(null)}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  <div className="space-y-6">
+                    {schedules.map((schedule) => (
+                      <div key={schedule.id} className="border rounded-lg p-4">
+                        <h3 className="text-lg font-medium mb-4">Round {schedule.round}</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="bg-blue-50 p-4 rounded-lg">
+                            <h4 className="font-medium mb-2">Side 1</h4>
+                            <ul className="space-y-2">
+                              <li>{getPlayerName(schedule.side_1_player_1, viewingSchedule)}</li>
+                              <li>{getPlayerName(schedule.side_1_player_2, viewingSchedule)}</li>
+                              <li>{getPlayerName(schedule.side_1_player_3, viewingSchedule)}</li>
+                              <li>{getPlayerName(schedule.side_1_player_4, viewingSchedule)}</li>
+                            </ul>
+                          </div>
+                          <div className="bg-red-50 p-4 rounded-lg">
+                            <h4 className="font-medium mb-2">Side 2</h4>
+                            <ul className="space-y-2">
+                              <li>{getPlayerName(schedule.side_2_player_1, viewingSchedule)}</li>
+                              <li>{getPlayerName(schedule.side_2_player_2, viewingSchedule)}</li>
+                              <li>{getPlayerName(schedule.side_2_player_3, viewingSchedule)}</li>
+                              <li>{getPlayerName(schedule.side_2_player_4, viewingSchedule)}</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {editingCompetition && (
               <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">

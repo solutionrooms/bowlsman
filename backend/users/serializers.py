@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Competition, CompetitionUser
+from .models import Competition, CompetitionUser, CompetitionSchedule
 
 class UserSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
@@ -71,8 +71,19 @@ class CompetitionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Competition
-        fields = ['id', 'name', 'created_at', 'num_players', 'creator', 'creator_name', 'rule_set_id', 'is_full', 'players', 'available_slots']
-        read_only_fields = ['creator', 'created_at']
+        fields = ['id', 'name', 'created_at', 'num_players', 'creator', 'creator_name', 
+                 'rule_set_id', 'is_full', 'players', 'available_slots', 'status']
+        read_only_fields = ['creator', 'created_at', 'status']
 
     def get_available_slots(self, obj):
-        return obj.num_players - obj.competition_users.count() 
+        return obj.num_players - obj.competition_users.count()
+
+class CompetitionScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompetitionSchedule
+        fields = [
+            'id', 'competition', 'round', 'created_at',
+            'side_1_player_1', 'side_1_player_2', 'side_1_player_3', 'side_1_player_4',
+            'side_2_player_1', 'side_2_player_2', 'side_2_player_3', 'side_2_player_4'
+        ]
+        read_only_fields = ['created_at'] 
