@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { EllipsisVerticalIcon } from '@heroicons/react/24/solid';
 import Navigation from '../../components/Navigation';
 import api from '../../../src/lib/axios';
 
@@ -77,6 +78,7 @@ export default function ManageCompetitions() {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -310,6 +312,10 @@ export default function ManageCompetitions() {
     return player?.username || 'Unknown Player';
   };
 
+  const toggleMenu = (competitionId: number) => {
+    setOpenMenuId(openMenuId === competitionId ? null : competitionId);
+  };
+
   if (!user) {
     return <div>Loading...</div>;
   }
@@ -422,49 +428,80 @@ export default function ManageCompetitions() {
                 <div key={competition.id} className="bg-white shadow rounded-lg p-4 border border-gray-200">
                   <div className="flex justify-between items-start mb-4">
                     <h3 className="text-lg font-medium text-gray-900">{competition.name}</h3>
-                    <div className="flex space-x-2">
+                    <div className="relative">
                       <button
-                        onClick={() => handleManagePlayers(competition)}
-                        className="text-blue-600 hover:text-blue-900"
+                        onClick={() => toggleMenu(competition.id)}
+                        className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
                       >
-                        Players
+                        <EllipsisVerticalIcon className="h-6 w-6" />
                       </button>
-                      <button
-                        onClick={() => handleEdit(competition)}
-                        className="text-indigo-600 hover:text-indigo-900"
-                      >
-                        Edit
-                      </button>
-                      {competition.is_full && competition.status !== 'scheduled' && (
-                        <button
-                          onClick={() => handleSchedule(competition)}
-                          className="text-green-600 hover:text-green-900"
-                        >
-                          Schedule
-                        </button>
+                      
+                      {openMenuId === competition.id && (
+                        <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                          <div className="py-1" role="menu">
+                            <button
+                              onClick={() => {
+                                handleManagePlayers(competition);
+                                toggleMenu(competition.id);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-gray-100"
+                            >
+                              Players
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleEdit(competition);
+                                toggleMenu(competition.id);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-indigo-600 hover:bg-gray-100"
+                            >
+                              Edit
+                            </button>
+                            {competition.is_full && competition.status !== 'scheduled' && (
+                              <button
+                                onClick={() => {
+                                  handleSchedule(competition);
+                                  toggleMenu(competition.id);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
+                              >
+                                Schedule
+                              </button>
+                            )}
+                            {competition.status === 'scheduled' && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    handleViewSchedule(competition);
+                                    toggleMenu(competition.id);
+                                  }}
+                                  className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
+                                >
+                                  View Schedule
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    handleDeleteSchedule(competition);
+                                    toggleMenu(competition.id);
+                                  }}
+                                  className="block w-full text-left px-4 py-2 text-sm text-yellow-600 hover:bg-gray-100"
+                                >
+                                  Delete Schedule
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => {
+                                handleDelete(competition.id);
+                                toggleMenu(competition.id);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
                       )}
-                      {competition.status === 'scheduled' && (
-                        <>
-                          <button
-                            onClick={() => handleViewSchedule(competition)}
-                            className="text-green-600 hover:text-green-900"
-                          >
-                            View Schedule
-                          </button>
-                          <button
-                            onClick={() => handleDeleteSchedule(competition)}
-                            className="text-yellow-600 hover:text-yellow-900"
-                          >
-                            Delete Schedule
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => handleDelete(competition.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </button>
                     </div>
                   </div>
                   
