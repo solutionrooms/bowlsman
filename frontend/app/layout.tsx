@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Login App',
-  description: 'Login application with Next.js and FastAPI',
+  title: 'Bowlsman',
+  description: 'Bowling competition management system',
 }
 
 export default function RootLayout({

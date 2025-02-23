@@ -62,7 +62,7 @@ DATABASES = {
         'NAME': 'webapp2',
         'USER': 'postgres',
         'PASSWORD': 'postgres',
-        'HOST': 'postgres',
+        'HOST': 'bowlsman-postgres',
         'PORT': '5432',
     }
 }
