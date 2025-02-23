@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import Navigation from '../../components/Navigation';
-import api from '@/lib/axios';
+import api from '../../../src/lib/axios';
 
 interface User {
   id: number;

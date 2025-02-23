@@ -3,7 +3,7 @@
 import React, { useState, FormEvent, ChangeEvent } from 'react';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/axios';
+import api from '../src/lib/axios';
 
 interface ApiError {
   error: string;
