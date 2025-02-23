@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 
 class Competition(models.Model):
+    name = models.CharField(max_length=100, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     num_players = models.IntegerField()
     creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name='competitions')
@@ -11,7 +12,7 @@ class Competition(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Competition by {self.creator.username} - {self.created_at}"
+        return self.name
     
     @property
     def is_full(self):

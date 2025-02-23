@@ -27,6 +27,7 @@ interface Player {
 
 interface Competition {
   id: number;
+  name: string;
   created_at: string;
   num_players: number;
   creator_name: string;
@@ -125,8 +126,14 @@ export default function ManageCompetitions() {
     e.preventDefault();
     if (!editingCompetition) return;
 
+    if (!editingCompetition.name.trim()) {
+      setError('Competition name is required');
+      return;
+    }
+
     try {
       const response = await api.put<Competition>(`/competitions/${editingCompetition.id}/`, {
+        name: editingCompetition.name,
         num_players: editingCompetition.num_players,
         rule_set_id: editingCompetition.rule_set_id
       });
@@ -254,6 +261,7 @@ export default function ManageCompetitions() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Players</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Creator</th>
@@ -265,6 +273,9 @@ export default function ManageCompetitions() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {competitions.map(competition => (
                     <tr key={competition.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {competition.name}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {new Date(competition.created_at).toLocaleString()}
                       </td>
@@ -322,6 +333,21 @@ export default function ManageCompetitions() {
                     </div>
                   )}
                   <form onSubmit={handleUpdate}>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Competition Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editingCompetition.name}
+                        onChange={(e) => setEditingCompetition({
+                          ...editingCompetition,
+                          name: e.target.value
+                        })}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        required
+                      />
+                    </div>
                     <div className="mb-4">
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Number of Players

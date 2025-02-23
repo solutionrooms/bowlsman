@@ -71,7 +71,7 @@ class CompetitionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Competition
-        fields = ['id', 'created_at', 'num_players', 'creator', 'creator_name', 'rule_set_id', 'is_full', 'players', 'available_slots']
+        fields = ['id', 'name', 'created_at', 'num_players', 'creator', 'creator_name', 'rule_set_id', 'is_full', 'players', 'available_slots']
         read_only_fields = ['creator', 'created_at']
 
     def get_available_slots(self, obj):

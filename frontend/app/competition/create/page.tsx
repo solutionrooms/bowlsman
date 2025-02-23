@@ -13,6 +13,7 @@ interface User {
 
 export default function CreateCompetition() {
   const [numPlayers, setNumPlayers] = useState<number>(4);
+  const [name, setName] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [user, setUser] = useState<User | null>(null);
   const router = useRouter();
@@ -48,8 +49,14 @@ export default function CreateCompetition() {
       return;
     }
 
+    if (!name.trim()) {
+      setError('Competition name is required');
+      return;
+    }
+
     try {
       await api.post('/competitions/', {
+        name,
         num_players: numPlayers,
         rule_set_id: 1  // Default rule set, you can modify this later
       });
@@ -74,6 +81,20 @@ export default function CreateCompetition() {
             <h1 className="text-2xl font-bold mb-6">Create New Competition</h1>
             
             <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+                  Competition Name
+                </label>
+                <input
+                  type="text"
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  required
+                />
+              </div>
+
               <div className="mb-4">
                 <label htmlFor="numPlayers" className="block text-sm font-medium text-gray-700 mb-2">
                   Number of Players
