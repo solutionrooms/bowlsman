@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '../components/Navigation';
-import api from '../../src/lib/axios';
+import api from '@/lib/axios';
 import ManageUsers from '../../src/app/manage/users/page';
 
 interface User {
