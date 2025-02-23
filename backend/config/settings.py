@@ -89,7 +89,11 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "https://bowlsman.fridaydigital.co.uk",
+]
+
+CORS_ALLOW_CREDENTIALS = True
 
 LOGGING = {
     'version': 1,
