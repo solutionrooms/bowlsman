@@ -57,7 +57,7 @@ export default function Home() {
     try {
       if (isLogin) {
         console.log('Attempting login for user:', username);
-        const response = await api.post('users/login', {
+        const response = await api.post<LoginResponse>('users/login', {
           username,
           password
         });
