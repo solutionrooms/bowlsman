@@ -14,8 +14,9 @@ instance.interceptors.request.use((config) => {
   }
   
   if (config.url) {
-    // Remove any leading slashes to prevent double slashes
-    config.url = config.url.replace(/^\/+/, '');
+    // Remove any leading slashes and ensure api prefix
+    const cleanUrl = config.url.replace(/^\/+/, '').replace(/^api\//, '');
+    config.url = `api/${cleanUrl}`;
   }
 
   // Log the full URL for debugging
