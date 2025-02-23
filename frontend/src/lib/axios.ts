@@ -1,10 +1,21 @@
 import axios from "axios";
 
+// Debug environment variable
+console.log('Environment variable check:', {
+  NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  NODE_ENV: process.env.NODE_ENV
+});
+
 const instance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
   headers: {
     "Content-Type": "application/json",
   },
+});
+
+// Debug instance config
+console.log('Axios instance config:', {
+  baseURL: instance.defaults.baseURL
 });
 
 instance.interceptors.request.use((config) => {
