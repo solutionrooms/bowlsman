@@ -13,14 +13,9 @@ instance.interceptors.request.use((config) => {
     config.headers.Authorization = `Token ${token}`;
   }
   
-  // Add /api prefix to all requests if not already present
   if (config.url) {
-    // Remove any leading slashes
-    const cleanUrl = config.url.replace(/^\/+/, '');
-    // Add api prefix if not present
-    if (!cleanUrl.startsWith('api/')) {
-      config.url = `api/${cleanUrl}`;
-    }
+    // Remove any leading slashes to prevent double slashes
+    config.url = config.url.replace(/^\/+/, '');
   }
 
   // Log the full URL for debugging
