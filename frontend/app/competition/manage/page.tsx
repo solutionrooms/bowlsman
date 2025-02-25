@@ -201,16 +201,20 @@ export default function ManageCompetitions() {
     setSelectedUser(user);
     setNewPlayerName(user.display_name);
     setShowUserDropdown(false);
+    
+    // Immediately add the selected user
+    if (managingPlayers) {
+      addPlayer(user.id);
+    }
   };
 
-  const handleAddPlayer = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const addPlayer = async (userId?: number) => {
     if (!managingPlayers) return;
 
     try {
       const response = await api.post<Player>(`/competitions/${managingPlayers.id}/add_player/`, {
-        user_id: selectedUser?.id,
-        guest_name: !selectedUser ? newPlayerName : undefined
+        user_id: userId,
+        guest_name: !userId ? newPlayerName : undefined
       });
 
       const updatedCompetition = {
@@ -230,6 +234,14 @@ export default function ManageCompetitions() {
     } catch (error: any) {
       setError(error.response?.data?.error || 'Failed to add player');
     }
+  };
+
+  const handleAddPlayer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!managingPlayers || !newPlayerName) return;
+
+    // This now only handles guest players (non-registered users)
+    await addPlayer();
   };
 
   const handleRemovePlayer = async (playerId: number) => {
@@ -822,58 +834,111 @@ export default function ManageCompetitions() {
                     </button>
                   </div>
 
+                  {/* Add Player Section */}
+                  <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                    <h4 className="text-md font-medium mb-3">Add Player</h4>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={newPlayerName}
+                        onChange={(e) => {
+                          setNewPlayerName(e.target.value);
+                          setSelectedUser(null);
+                        }}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        placeholder="Search for a player or enter guest name"
+                        autoFocus
+                      />
+                      {showUserDropdown && (
+                        <div className="absolute z-10 w-full mt-1 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">
+                          {filteredUsers.map(user => (
+                            <div
+                              key={user.id}
+                              className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                              onClick={() => handleSelectUser(user)}
+                            >
+                              {user.display_name}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {error && (
+                      <div className="mt-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
+                        {error}
+                      </div>
+                    )}
+                    
+                    {newPlayerName && !showUserDropdown && (
+                      <button
+                        onClick={() => addPlayer()}
+                        className="mt-2 bg-blue-600 text-white px-3 py-1 text-sm rounded hover:bg-blue-700"
+                        disabled={!newPlayerName}
+                      >
+                        Add as Guest
+                      </button>
+                    )}
+                  </div>
+
+                  <h4 className="text-md font-medium mb-3">Current Players</h4>
                   <DragDropContext onDragEnd={handleDragEnd}>
                     <Droppable droppableId="players">
                       {(provided) => (
-                        <div {...provided.droppableProps} ref={provided.innerRef}>
-                          {managingPlayers.players.map((player, index) => (
-                            <Draggable key={player.id} draggableId={String(player.id)} index={index}>
-                              {(provided) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  {...provided.dragHandleProps}
-                                  className="flex items-center justify-between bg-white p-3 mb-2 rounded border"
-                                >
-                                  <div className="flex items-center">
-                                    <GripVerticalIcon className="h-5 w-5 text-gray-400 mr-2" />
-                                    <span>{player.username || player.guest_name}</span>
+                        <div {...provided.droppableProps} ref={provided.innerRef} className="max-h-[40vh] overflow-y-auto">
+                          {managingPlayers.players.length === 0 ? (
+                            <div className="text-center py-4 text-gray-500">
+                              No players added yet
+                            </div>
+                          ) : (
+                            managingPlayers.players.map((player, index) => (
+                              <Draggable key={player.id} draggableId={String(player.id)} index={index}>
+                                {(provided) => (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    className="flex items-center justify-between bg-white p-3 mb-2 rounded border"
+                                  >
+                                    <div className="flex items-center">
+                                      <GripVerticalIcon className="h-5 w-5 text-gray-400 mr-2" />
+                                      <span>{player.username || player.guest_name}</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => {
+                                          setSelectedPlayerToReplace(player);
+                                          setShowReplacePlayerModal(true);
+                                        }}
+                                        className="text-blue-600 hover:text-blue-800"
+                                      >
+                                        Replace
+                                      </button>
+                                      <button
+                                        onClick={() => handleRemovePlayer(player.id)}
+                                        className="text-red-600 hover:text-red-800"
+                                        disabled={managingPlayers.status === 'scheduled'}
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => {
-                                        setSelectedPlayerToReplace(player);
-                                        setShowReplacePlayerModal(true);
-                                      }}
-                                      className="text-blue-600 hover:text-blue-800"
-                                    >
-                                      Replace
-                                    </button>
-                                    <button
-                                      onClick={() => handleRemovePlayer(player.id)}
-                                      className="text-red-600 hover:text-red-800"
-                                      disabled={managingPlayers.status === 'scheduled'}
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </Draggable>
-                          ))}
+                                )}
+                              </Draggable>
+                            ))
+                          )}
                           {provided.placeholder}
                         </div>
                       )}
                     </Droppable>
                   </DragDropContext>
 
-                  <div className="mt-4 flex justify-between">
+                  <div className="mt-6 flex justify-end">
                     <button
-                      onClick={() => setShowAddPlayerModal(true)}
-                      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                      disabled={managingPlayers.status === 'scheduled'}
+                      onClick={() => setManagingPlayers(null)}
+                      className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300"
                     >
-                      Add Player
+                      Done
                     </button>
                   </div>
                 </div>
