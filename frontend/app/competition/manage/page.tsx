@@ -6,6 +6,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { EllipsisVerticalIcon, XMarkIcon as XIcon, Bars3Icon as GripVerticalIcon } from '@heroicons/react/24/solid';
 import Navigation from '../../components/Navigation';
 import api from '../../../src/lib/axios';
+import { notification } from 'antd';
 
 interface User {
   id: number;
@@ -302,7 +303,12 @@ export default function ManageCompetitions() {
   const handleSchedule = async (competition: Competition) => {
     try {
       const response = await api.post<CompetitionSchedule[]>(`/competitions/${competition.id}/create_schedule/`);
-      alert(`Schedule created successfully! ${response.data.length} rounds created.`);
+      
+      notification.success({
+        message: 'Schedule Created',
+        description: `Schedule created successfully! ${response.data.length} matches created.`,
+        duration: 4,
+      });
       
       // Fetch fresh competition data to get updated status
       const updatedCompResponse = await api.get<Competition>(`/competitions/${competition.id}/`);
@@ -311,7 +317,12 @@ export default function ManageCompetitions() {
       ));
     } catch (error) {
       console.error('Error creating schedule:', error);
-      alert('Failed to create schedule');
+      
+      notification.error({
+        message: 'Schedule Creation Failed',
+        description: 'Failed to create schedule',
+        duration: 4,
+      });
     }
   };
 
@@ -322,7 +333,12 @@ export default function ManageCompetitions() {
       setViewingSchedule(competition);
     } catch (error) {
       console.error('Error fetching schedule:', error);
-      alert('Failed to fetch schedule');
+      
+      notification.error({
+        message: 'Schedule Error',
+        description: 'Failed to fetch schedule',
+        duration: 4,
+      });
     }
   };
 
@@ -331,6 +347,13 @@ export default function ManageCompetitions() {
 
     try {
       await api.delete(`/competitions/${competition.id}/delete_schedule/`);
+      
+      notification.success({
+        message: 'Schedule Deleted',
+        description: 'Schedule has been successfully deleted',
+        duration: 4,
+      });
+      
       setCompetitions(competitions.map(comp => 
         comp.id === competition.id ? { ...comp, status: 'full' } : comp
       ));
@@ -338,7 +361,12 @@ export default function ManageCompetitions() {
       setSchedules([]);
     } catch (error) {
       console.error('Error deleting schedule:', error);
-      alert('Failed to delete schedule');
+      
+      notification.error({
+        message: 'Delete Error',
+        description: 'Failed to delete schedule',
+        duration: 4,
+      });
     }
   };
 
@@ -368,6 +396,12 @@ export default function ManageCompetitions() {
         comp.id === managingPlayers.id ? response.data : comp
       ));
 
+      notification.success({
+        message: 'Player Replaced',
+        description: 'Player has been successfully replaced',
+        duration: 4,
+      });
+
       // Reset form
       setShowReplacePlayerModal(false);
       setSelectedPlayerToReplace(null);
@@ -375,7 +409,12 @@ export default function ManageCompetitions() {
       setSelectedUser(null);
     } catch (error) {
       console.error('Error replacing player:', error);
-      alert('Failed to replace player');
+      
+      notification.error({
+        message: 'Replace Error',
+        description: 'Failed to replace player',
+        duration: 4,
+      });
     }
   };
 
@@ -433,6 +472,31 @@ export default function ManageCompetitions() {
                           <span className="text-green-600 font-bold">Full</span>
                         ) : (
                           <span>{competition.available_slots} slots left</span>
+                        )}
+                        {competition.status === 'scheduled' ? (
+                          <button
+                            onClick={() => handleDeleteSchedule(competition)}
+                            className="ml-2 px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
+                            title="Delete Schedule"
+                          >
+                            Delete Schedule
+                          </button>
+                        ) : competition.is_full ? (
+                          <button
+                            onClick={() => handleSchedule(competition)}
+                            className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200"
+                            title="Create Schedule"
+                          >
+                            Create Schedule
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleManagePlayers(competition)}
+                            className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200"
+                            title="Manage Players"
+                          >
+                            Manage Players
+                          </button>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium relative">
@@ -620,25 +684,52 @@ export default function ManageCompetitions() {
                       <span className="text-gray-500">Rule Set:</span>
                       <span className="text-gray-900">{competition.rule_set_id}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-500">Status:</span>
-                      <span className={`font-medium ${
-                        competition.status === 'scheduled'
-                          ? 'text-purple-600'
-                          : (competition.num_players - competition.available_slots) > competition.num_players
-                          ? 'text-red-600'
-                          : competition.is_full
-                          ? 'text-green-600'
-                          : 'text-gray-900'
-                      }`}>
-                        {competition.status === 'scheduled'
-                          ? 'Scheduled'
-                          : (competition.num_players - competition.available_slots) > competition.num_players
-                          ? 'Too Many Players'
-                          : competition.is_full
-                          ? 'Full'
-                          : `${competition.available_slots} slots left`}
-                      </span>
+                      <div className="flex items-center">
+                        <span className={`font-medium ${
+                          competition.status === 'scheduled'
+                            ? 'text-purple-600'
+                            : (competition.num_players - competition.available_slots) > competition.num_players
+                            ? 'text-red-600'
+                            : competition.is_full
+                            ? 'text-green-600'
+                            : 'text-gray-900'
+                        }`}>
+                          {competition.status === 'scheduled'
+                            ? 'Scheduled'
+                            : (competition.num_players - competition.available_slots) > competition.num_players
+                            ? 'Too Many Players'
+                            : competition.is_full
+                            ? 'Full'
+                            : `${competition.available_slots} slots left`}
+                        </span>
+                        {competition.status === 'scheduled' ? (
+                          <button
+                            onClick={() => handleDeleteSchedule(competition)}
+                            className="ml-2 px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
+                            title="Delete Schedule"
+                          >
+                            Delete
+                          </button>
+                        ) : competition.is_full ? (
+                          <button
+                            onClick={() => handleSchedule(competition)}
+                            className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200"
+                            title="Create Schedule"
+                          >
+                            Schedule
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleManagePlayers(competition)}
+                            className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200"
+                            title="Manage Players"
+                          >
+                            Players
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
