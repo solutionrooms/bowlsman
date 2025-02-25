@@ -13,6 +13,8 @@ class Competition(models.Model):
     num_players = models.IntegerField()
     creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name='competitions')
     rule_set_id = models.IntegerField()
+    parallel_matches = models.IntegerField(default=1)  # Number of matches that can be played simultaneously
+    max_rounds = models.IntegerField(default=5)  # Maximum number of rounds to generate
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
 
     class Meta:
@@ -36,23 +38,24 @@ class Competition(models.Model):
 
 class CompetitionSchedule(models.Model):
     competition = models.ForeignKey(Competition, on_delete=models.CASCADE, related_name='schedules')
-    side_1_player_1 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_1_player_1_games')
-    side_1_player_2 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_1_player_2_games')
-    side_1_player_3 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_1_player_3_games')
-    side_1_player_4 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_1_player_4_games')
-    side_2_player_1 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_2_player_1_games')
-    side_2_player_2 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_2_player_2_games')
-    side_2_player_3 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_2_player_3_games')
-    side_2_player_4 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_2_player_4_games')
     round = models.IntegerField()
+    sub_round = models.IntegerField(default=1)  # For parallel matches within a round
+    side_1_player_1 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_1_player_1_games', null=True, blank=True)
+    side_1_player_2 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_1_player_2_games', null=True, blank=True)
+    side_1_player_3 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_1_player_3_games', null=True, blank=True)
+    side_1_player_4 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_1_player_4_games', null=True, blank=True)
+    side_2_player_1 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_2_player_1_games', null=True, blank=True)
+    side_2_player_2 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_2_player_2_games', null=True, blank=True)
+    side_2_player_3 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_2_player_3_games', null=True, blank=True)
+    side_2_player_4 = models.ForeignKey('CompetitionUser', on_delete=models.CASCADE, related_name='side_2_player_4_games', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['round', 'created_at']
-        unique_together = ['competition', 'round']
+        ordering = ['round', 'sub_round', 'created_at']
+        unique_together = ['competition', 'round', 'sub_round']
 
     def __str__(self):
-        return f"{self.competition.name} - Round {self.round}"
+        return f"{self.competition.name} - Round {self.round}.{self.sub_round}"
 
 class CompetitionUser(models.Model):
     competition = models.ForeignKey(Competition, on_delete=models.CASCADE, related_name='competition_users')

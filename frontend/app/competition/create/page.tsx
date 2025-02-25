@@ -14,6 +14,8 @@ interface User {
 export default function CreateCompetition() {
   const [numPlayers, setNumPlayers] = useState<number>(4);
   const [name, setName] = useState<string>('');
+  const [parallelMatches, setParallelMatches] = useState<number>(1);
+  const [maxRounds, setMaxRounds] = useState<number>(5);
   const [error, setError] = useState<string>('');
   const [user, setUser] = useState<User | null>(null);
   const router = useRouter();
@@ -58,7 +60,9 @@ export default function CreateCompetition() {
       await api.post('/competitions/', {
         name,
         num_players: numPlayers,
-        rule_set_id: 1  // Default rule set, you can modify this later
+        rule_set_id: 1,  // Default rule set, you can modify this later
+        parallel_matches: parallelMatches,
+        max_rounds: maxRounds
       });
       router.push('/competition/manage');
     } catch (error) {
@@ -110,6 +114,42 @@ export default function CreateCompetition() {
                 />
                 <p className="mt-1 text-sm text-gray-500">
                   Choose a number between 4 and 40
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label htmlFor="parallelMatches" className="block text-sm font-medium text-gray-700 mb-2">
+                  Parallel Matches
+                </label>
+                <input
+                  type="number"
+                  id="parallelMatches"
+                  min={1}
+                  max={10}
+                  value={parallelMatches}
+                  onChange={(e) => setParallelMatches(parseInt(e.target.value))}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                />
+                <p className="mt-1 text-sm text-gray-500">
+                  Number of matches that can be played simultaneously (1-10)
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label htmlFor="maxRounds" className="block text-sm font-medium text-gray-700 mb-2">
+                  Maximum Rounds
+                </label>
+                <input
+                  type="number"
+                  id="maxRounds"
+                  min={1}
+                  max={20}
+                  value={maxRounds}
+                  onChange={(e) => setMaxRounds(parseInt(e.target.value))}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                />
+                <p className="mt-1 text-sm text-gray-500">
+                  Maximum number of rounds to generate (1-20)
                 </p>
               </div>
 

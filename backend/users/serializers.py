@@ -72,7 +72,7 @@ class CompetitionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Competition
         fields = ['id', 'name', 'created_at', 'num_players', 'creator', 'creator_name', 
-                 'rule_set_id', 'is_full', 'players', 'available_slots', 'status']
+                 'rule_set_id', 'is_full', 'players', 'available_slots', 'status', 'parallel_matches', 'max_rounds']
         read_only_fields = ['creator', 'created_at', 'status']
 
     def get_available_slots(self, obj):
@@ -82,7 +82,7 @@ class CompetitionScheduleSerializer(serializers.ModelSerializer):
     class Meta:
         model = CompetitionSchedule
         fields = [
-            'id', 'competition', 'round', 'created_at',
+            'id', 'competition', 'round', 'sub_round', 'created_at',
             'side_1_player_1', 'side_1_player_2', 'side_1_player_3', 'side_1_player_4',
             'side_2_player_1', 'side_2_player_2', 'side_2_player_3', 'side_2_player_4'
         ]

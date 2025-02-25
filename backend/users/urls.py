@@ -11,6 +11,7 @@ urlpatterns = [
     path('competitions/<int:competition_id>/add_player/', views.CompetitionViewSet.as_view({'post': 'add_player'})),
     path('competitions/<int:competition_id>/remove_player/', views.CompetitionViewSet.as_view({'delete': 'remove_player'})),
     path('competitions/<int:competition_id>/reorder_players/', views.CompetitionViewSet.as_view({'post': 'reorder_players'})),
+    path('competitions/<int:competition_id>/replace_player/', views.CompetitionViewSet.as_view({'post': 'replace_player'})),
 ]
 
 # Add create_schedule as a viewset action

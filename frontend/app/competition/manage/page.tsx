@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { EllipsisVerticalIcon } from '@heroicons/react/24/solid';
+import { EllipsisVerticalIcon, XMarkIcon as XIcon, Bars3Icon as GripVerticalIcon } from '@heroicons/react/24/solid';
 import Navigation from '../../components/Navigation';
 import api from '../../../src/lib/axios';
 
@@ -33,6 +33,8 @@ interface Competition {
   num_players: number;
   creator_name: string;
   rule_set_id: number;
+  parallel_matches: number;
+  max_rounds: number;
   is_full: boolean;
   players: Player[];
   available_slots: number;
@@ -43,6 +45,7 @@ interface CompetitionSchedule {
   id: number;
   competition: number;
   round: number;
+  sub_round: number;
   created_at: string;
   side_1_player_1: number;
   side_1_player_2: number;
@@ -79,6 +82,9 @@ export default function ManageCompetitions() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [mounted, setMounted] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
+  const [showReplacePlayerModal, setShowReplacePlayerModal] = useState(false);
+  const [selectedPlayerToReplace, setSelectedPlayerToReplace] = useState<Player | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -120,12 +126,27 @@ export default function ManageCompetitions() {
       return;
     }
 
+    // Get IDs of users already in the competition
+    const existingUserIds = managingPlayers?.players
+      .filter(p => p.user !== null)
+      .map(p => p.user) || [];
+    
+    // When replacing a player, we need to exclude all players except the one being replaced
+    let filteredIds = existingUserIds;
+    if (selectedPlayerToReplace && selectedPlayerToReplace.user) {
+      // Remove the selected player's ID from the exclusion list
+      filteredIds = existingUserIds.filter(id => id !== selectedPlayerToReplace.user);
+    }
+
+    // Filter users by name and exclude those already in the competition
     const filtered = allUsers.filter(u => 
-      u.search_name.includes(newPlayerName.toLowerCase())
+      u.search_name.includes(newPlayerName.toLowerCase()) && 
+      !filteredIds.includes(u.id)
     );
+    
     setFilteredUsers(filtered);
     setShowUserDropdown(filtered.length > 0);
-  }, [newPlayerName, allUsers]);
+  }, [newPlayerName, allUsers, managingPlayers, selectedPlayerToReplace]);
 
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this competition?')) return;
@@ -155,7 +176,9 @@ export default function ManageCompetitions() {
       const response = await api.put<Competition>(`/competitions/${editingCompetition.id}/`, {
         name: editingCompetition.name,
         num_players: editingCompetition.num_players,
-        rule_set_id: editingCompetition.rule_set_id
+        rule_set_id: editingCompetition.rule_set_id,
+        parallel_matches: editingCompetition.parallel_matches,
+        max_rounds: editingCompetition.max_rounds
       });
       setCompetitions(competitions.map(comp => 
         comp.id === editingCompetition.id ? response.data : comp
@@ -316,6 +339,34 @@ export default function ManageCompetitions() {
     setOpenMenuId(openMenuId === competitionId ? null : competitionId);
   };
 
+  const handleReplacePlayer = async () => {
+    if (!managingPlayers || !selectedPlayerToReplace || (!selectedUser && !newPlayerName)) return;
+
+    try {
+      await api.post(`/competitions/${managingPlayers.id}/replace_player/`, {
+        old_player_id: selectedPlayerToReplace.id,
+        new_user_id: selectedUser?.id,
+        new_guest_name: !selectedUser ? newPlayerName : undefined
+      });
+
+      // Refresh competition data
+      const response = await api.get<Competition>(`/competitions/${managingPlayers.id}/`);
+      setManagingPlayers(response.data);
+      setCompetitions(competitions.map(comp =>
+        comp.id === managingPlayers.id ? response.data : comp
+      ));
+
+      // Reset form
+      setShowReplacePlayerModal(false);
+      setSelectedPlayerToReplace(null);
+      setNewPlayerName('');
+      setSelectedUser(null);
+    } catch (error) {
+      console.error('Error replacing player:', error);
+      alert('Failed to replace player');
+    }
+  };
+
   if (!user) {
     return <div>Loading...</div>;
   }
@@ -372,49 +423,82 @@ export default function ManageCompetitions() {
                           <span>{competition.available_slots} slots left</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => handleManagePlayers(competition)}
-                          className="text-blue-600 hover:text-blue-900 mr-4"
-                        >
-                          Players
-                        </button>
-                        <button
-                          onClick={() => handleEdit(competition)}
-                          className="text-indigo-600 hover:text-indigo-900 mr-4"
-                        >
-                          Edit
-                        </button>
-                        {competition.is_full && competition.status !== 'scheduled' && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium relative">
+                        <div className="relative">
                           <button
-                            onClick={() => handleSchedule(competition)}
-                            className="text-green-600 hover:text-green-900 mr-4"
+                            onClick={() => toggleMenu(competition.id)}
+                            className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
                           >
-                            Schedule
+                            <EllipsisVerticalIcon className="h-6 w-6" />
                           </button>
-                        )}
-                        {competition.status === 'scheduled' && (
-                          <>
-                            <button
-                              onClick={() => handleViewSchedule(competition)}
-                              className="text-green-600 hover:text-green-900 mr-4"
-                            >
-                              View Schedule
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSchedule(competition)}
-                              className="text-yellow-600 hover:text-yellow-900 mr-4"
-                            >
-                              Delete Schedule
-                            </button>
-                          </>
-                        )}
-                        <button
-                          onClick={() => handleDelete(competition.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          Delete
-                        </button>
+                          
+                          {openMenuId === competition.id && (
+                            <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                              <div className="py-1" role="menu">
+                                <button
+                                  onClick={() => {
+                                    handleManagePlayers(competition);
+                                    toggleMenu(competition.id);
+                                  }}
+                                  className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-gray-100"
+                                >
+                                  Manage Players
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    handleEdit(competition);
+                                    toggleMenu(competition.id);
+                                  }}
+                                  className="block w-full text-left px-4 py-2 text-sm text-indigo-600 hover:bg-gray-100"
+                                >
+                                  Edit Competition
+                                </button>
+                                {competition.is_full && competition.status !== 'scheduled' && (
+                                  <button
+                                    onClick={() => {
+                                      handleSchedule(competition);
+                                      toggleMenu(competition.id);
+                                    }}
+                                    className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
+                                  >
+                                    Create Schedule
+                                  </button>
+                                )}
+                                {competition.status === 'scheduled' && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        handleViewSchedule(competition);
+                                        toggleMenu(competition.id);
+                                      }}
+                                      className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
+                                    >
+                                      View Schedule
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleDeleteSchedule(competition);
+                                        toggleMenu(competition.id);
+                                      }}
+                                      className="block w-full text-left px-4 py-2 text-sm text-yellow-600 hover:bg-gray-100"
+                                    >
+                                      Delete Schedule
+                                    </button>
+                                  </>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    handleDelete(competition.id);
+                                    toggleMenu(competition.id);
+                                  }}
+                                  className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                                >
+                                  Delete Competition
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -566,24 +650,40 @@ export default function ManageCompetitions() {
                   <div className="space-y-6">
                     {schedules.map((schedule) => (
                       <div key={schedule.id} className="border rounded-lg p-4">
-                        <h3 className="text-lg font-medium mb-4">Round {schedule.round}</h3>
+                        <h3 className="text-lg font-medium mb-4">Round {schedule.round}, Game {schedule.sub_round}</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="bg-blue-50 p-4 rounded-lg">
                             <h4 className="font-medium mb-2">Side 1</h4>
                             <ul className="space-y-2">
-                              <li>{getPlayerName(schedule.side_1_player_1, viewingSchedule)}</li>
-                              <li>{getPlayerName(schedule.side_1_player_2, viewingSchedule)}</li>
-                              <li>{getPlayerName(schedule.side_1_player_3, viewingSchedule)}</li>
-                              <li>{getPlayerName(schedule.side_1_player_4, viewingSchedule)}</li>
+                              {schedule.side_1_player_1 && getPlayerName(schedule.side_1_player_1, viewingSchedule) !== 'Unknown Player' && (
+                                <li>{getPlayerName(schedule.side_1_player_1, viewingSchedule)}</li>
+                              )}
+                              {schedule.side_1_player_2 && getPlayerName(schedule.side_1_player_2, viewingSchedule) !== 'Unknown Player' && (
+                                <li>{getPlayerName(schedule.side_1_player_2, viewingSchedule)}</li>
+                              )}
+                              {schedule.side_1_player_3 && getPlayerName(schedule.side_1_player_3, viewingSchedule) !== 'Unknown Player' && (
+                                <li>{getPlayerName(schedule.side_1_player_3, viewingSchedule)}</li>
+                              )}
+                              {schedule.side_1_player_4 && getPlayerName(schedule.side_1_player_4, viewingSchedule) !== 'Unknown Player' && (
+                                <li>{getPlayerName(schedule.side_1_player_4, viewingSchedule)}</li>
+                              )}
                             </ul>
                           </div>
                           <div className="bg-red-50 p-4 rounded-lg">
                             <h4 className="font-medium mb-2">Side 2</h4>
                             <ul className="space-y-2">
-                              <li>{getPlayerName(schedule.side_2_player_1, viewingSchedule)}</li>
-                              <li>{getPlayerName(schedule.side_2_player_2, viewingSchedule)}</li>
-                              <li>{getPlayerName(schedule.side_2_player_3, viewingSchedule)}</li>
-                              <li>{getPlayerName(schedule.side_2_player_4, viewingSchedule)}</li>
+                              {schedule.side_2_player_1 && getPlayerName(schedule.side_2_player_1, viewingSchedule) !== 'Unknown Player' && (
+                                <li>{getPlayerName(schedule.side_2_player_1, viewingSchedule)}</li>
+                              )}
+                              {schedule.side_2_player_2 && getPlayerName(schedule.side_2_player_2, viewingSchedule) !== 'Unknown Player' && (
+                                <li>{getPlayerName(schedule.side_2_player_2, viewingSchedule)}</li>
+                              )}
+                              {schedule.side_2_player_3 && getPlayerName(schedule.side_2_player_3, viewingSchedule) !== 'Unknown Player' && (
+                                <li>{getPlayerName(schedule.side_2_player_3, viewingSchedule)}</li>
+                              )}
+                              {schedule.side_2_player_4 && getPlayerName(schedule.side_2_player_4, viewingSchedule) !== 'Unknown Player' && (
+                                <li>{getPlayerName(schedule.side_2_player_4, viewingSchedule)}</li>
+                              )}
                             </ul>
                           </div>
                         </div>
@@ -649,6 +749,46 @@ export default function ManageCompetitions() {
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                       />
                     </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Parallel Matches
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={editingCompetition.parallel_matches}
+                        onChange={(e) => setEditingCompetition({
+                          ...editingCompetition,
+                          parallel_matches: parseInt(e.target.value)
+                        })}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                      />
+                      <p className="mt-1 text-sm text-gray-500">
+                        Number of matches that can be played simultaneously (1-10)
+                      </p>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Maximum Rounds
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={editingCompetition.max_rounds}
+                        onChange={(e) => setEditingCompetition({
+                          ...editingCompetition,
+                          max_rounds: parseInt(e.target.value)
+                        })}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                      />
+                      <p className="mt-1 text-sm text-gray-500">
+                        Maximum number of rounds to generate (1-20)
+                      </p>
+                    </div>
+
                     <div className="flex justify-end space-x-4">
                       <button
                         type="button"
@@ -670,80 +810,53 @@ export default function ManageCompetitions() {
             )}
 
             {managingPlayers && (
-              <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
-                <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                  <h2 className="text-xl font-bold mb-4">Manage Players</h2>
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-600">
-                      {managingPlayers.available_slots} slots available out of {managingPlayers.num_players}
-                    </p>
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-lg p-6 w-full max-w-lg">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-medium">Manage Players - {managingPlayers.name}</h3>
+                    <button
+                      onClick={() => setManagingPlayers(null)}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      <XIcon className="h-6 w-6" />
+                    </button>
                   </div>
-
-                  {!managingPlayers.is_full && (
-                    <form onSubmit={handleAddPlayer} className="mb-6">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="Enter player name"
-                          value={newPlayerName}
-                          onChange={(e) => setNewPlayerName(e.target.value)}
-                          className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                        />
-                        {showUserDropdown && (
-                          <div className="absolute z-10 w-full mt-1 bg-white shadow-lg rounded-md border border-gray-200">
-                            {filteredUsers.map(user => (
-                              <div
-                                key={user.id}
-                                className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                                onClick={() => handleSelectUser(user)}
-                              >
-                                {user.display_name}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <button
-                          type="submit"
-                          className="mt-2 w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
-                        >
-                          Add {selectedUser ? 'User' : 'Guest'}
-                        </button>
-                      </div>
-                      {error && (
-                        <p className="mt-2 text-sm text-red-600">{error}</p>
-                      )}
-                    </form>
-                  )}
 
                   <DragDropContext onDragEnd={handleDragEnd}>
                     <Droppable droppableId="players">
                       {(provided) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          className="space-y-2"
-                        >
+                        <div {...provided.droppableProps} ref={provided.innerRef}>
                           {managingPlayers.players.map((player, index) => (
-                            <Draggable
-                              key={player.id}
-                              draggableId={player.id.toString()}
-                              index={index}
-                            >
+                            <Draggable key={player.id} draggableId={String(player.id)} index={index}>
                               {(provided) => (
                                 <div
                                   ref={provided.innerRef}
                                   {...provided.draggableProps}
                                   {...provided.dragHandleProps}
-                                  className="flex items-center p-2 bg-gray-50 rounded"
+                                  className="flex items-center justify-between bg-white p-3 mb-2 rounded border"
                                 >
-                                  <span className="mr-2 text-gray-500">#{player.order}</span>
-                                  <span className="flex-grow">{player.username}</span>
-                                  <button
-                                    onClick={() => handleRemovePlayer(player.id)}
-                                    className="text-red-600 hover:text-red-900"
-                                  >
-                                    Remove
-                                  </button>
+                                  <div className="flex items-center">
+                                    <GripVerticalIcon className="h-5 w-5 text-gray-400 mr-2" />
+                                    <span>{player.username || player.guest_name}</span>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedPlayerToReplace(player);
+                                        setShowReplacePlayerModal(true);
+                                      }}
+                                      className="text-blue-600 hover:text-blue-800"
+                                    >
+                                      Replace
+                                    </button>
+                                    <button
+                                      onClick={() => handleRemovePlayer(player.id)}
+                                      className="text-red-600 hover:text-red-800"
+                                      disabled={managingPlayers.status === 'scheduled'}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
                                 </div>
                               )}
                             </Draggable>
@@ -754,12 +867,89 @@ export default function ManageCompetitions() {
                     </Droppable>
                   </DragDropContext>
 
-                  <div className="mt-6 flex justify-end">
+                  <div className="mt-4 flex justify-between">
                     <button
-                      onClick={() => setManagingPlayers(null)}
-                      className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300"
+                      onClick={() => setShowAddPlayerModal(true)}
+                      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                      disabled={managingPlayers.status === 'scheduled'}
                     >
-                      Close
+                      Add Player
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Replace Player Modal */}
+            {showReplacePlayerModal && selectedPlayerToReplace && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-lg p-6 w-full max-w-lg">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-medium">Replace Player</h3>
+                    <button
+                      onClick={() => {
+                        setShowReplacePlayerModal(false);
+                        setSelectedPlayerToReplace(null);
+                        setNewPlayerName('');
+                        setSelectedUser(null);
+                      }}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      <XIcon className="h-6 w-6" />
+                    </button>
+                  </div>
+
+                  <div className="mb-4">
+                    <p>Replacing: {selectedPlayerToReplace.username || selectedPlayerToReplace.guest_name}</p>
+                  </div>
+
+                  <div className="mb-4 relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      New Player
+                    </label>
+                    <input
+                      type="text"
+                      value={newPlayerName}
+                      onChange={(e) => {
+                        setNewPlayerName(e.target.value);
+                        setSelectedUser(null);
+                      }}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Search for a player or enter guest name"
+                    />
+                    {showUserDropdown && (
+                      <div className="absolute z-10 w-full mt-1 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">
+                        {filteredUsers.map(user => (
+                          <div
+                            key={user.id}
+                            className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                            onClick={() => handleSelectUser(user)}
+                          >
+                            {user.display_name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setShowReplacePlayerModal(false);
+                        setSelectedPlayerToReplace(null);
+                        setNewPlayerName('');
+                        setSelectedUser(null);
+                      }}
+                      className="px-4 py-2 text-gray-700 hover:text-gray-900"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleReplacePlayer}
+                      disabled={!newPlayerName && !selectedUser}
+                      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      Save
                     </button>
                   </div>
                 </div>

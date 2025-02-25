@@ -10,6 +10,7 @@ from .serializers import UserSerializer, CompetitionSerializer, CompetitionUserS
 from .models import Competition, CompetitionUser, CompetitionSchedule
 import logging
 import random
+from .scheduling import create_round_robin_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -220,9 +221,79 @@ class CompetitionViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
             
         except Exception as e:
+            logger.error(f"Error creating schedule: {str(e)}", exc_info=True)
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def replace_player(self, request, pk=None):
+        """Replace a player in a competition, even if it's scheduled"""
+        competition = self.get_object()
+        
+        old_player_id = request.data.get('old_player_id')
+        new_user_id = request.data.get('new_user_id')
+        new_guest_name = request.data.get('new_guest_name')
+        
+        if not old_player_id:
+            return Response(
+                {"error": "old_player_id is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if not new_user_id and not new_guest_name:
+            return Response(
+                {"error": "Either new_user_id or new_guest_name must be provided"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            old_player = CompetitionUser.objects.get(
+                id=old_player_id,
+                competition=competition
+            )
+            
+            # Create new player
+            if new_user_id:
+                user = User.objects.get(id=new_user_id)
+                new_player = CompetitionUser.objects.create(
+                    competition=competition,
+                    user=user,
+                    order=old_player.order
+                )
+            else:
+                new_player = CompetitionUser.objects.create(
+                    competition=competition,
+                    guest_name=new_guest_name,
+                    order=old_player.order
+                )
+            
+            # Update all schedule entries that reference the old player
+            for field in ['side_1_player_1', 'side_1_player_2', 'side_1_player_3', 'side_1_player_4',
+                         'side_2_player_1', 'side_2_player_2', 'side_2_player_3', 'side_2_player_4']:
+                CompetitionSchedule.objects.filter(**{field: old_player}).update(**{field: new_player})
+            
+            # Delete old player
+            old_player.delete()
+            
+            serializer = CompetitionUserSerializer(new_player)
+            return Response(serializer.data)
+            
+        except CompetitionUser.DoesNotExist:
+            return Response(
+                {"error": "Player not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
             )
 
 class CompetitionUserViewSet(viewsets.ModelViewSet):
@@ -233,53 +304,60 @@ class CompetitionUserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return CompetitionUser.objects.filter(competition__creator=self.request.user)
 
-def create_dummy_schedule(competition, players):
+def create_dummy_schedule(competition, players, team_size=2):
     """
-    Creates a basic schedule where each player gets to play at least one game.
-    This is a temporary implementation that will be replaced with proper scheduling logic.
+    Creates a round-robin schedule where teams compete against each other.
+    Each player will get to play with and against different players across rounds.
+    
+    Args:
+        competition: Competition object
+        players: List of CompetitionUser objects
+        team_size: Number of active players per team (1-4), defaults to 2
     """
     # Delete any existing schedule for this competition
+    logger.info(f"Deleting existing schedule for competition {competition.id}")
+    existing_count = CompetitionSchedule.objects.filter(competition=competition).count()
+    logger.info(f"Found {existing_count} existing schedule entries")
     CompetitionSchedule.objects.filter(competition=competition).delete()
+    after_count = CompetitionSchedule.objects.filter(competition=competition).count()
+    logger.info(f"After deletion: {after_count} schedule entries remain")
     
-    # Shuffle players to randomize teams
-    shuffled_players = list(players)
-    random.shuffle(shuffled_players)
+    # Convert players to format needed by scheduler
+    player_dicts = [{'id': player.id} for player in players]
     
-    # Create rounds until each player has played at least once
-    round_num = 1
-    remaining_players = set(players)
+    # Create a mapping of player IDs to CompetitionUser objects
+    player_map = {player.id: player for player in players}
     
-    while remaining_players:
-        # Take 8 players for this round (or all remaining if less than 8)
-        round_players = shuffled_players[:8]
-        if len(round_players) < 8:
-            # If we don't have enough players, reuse some from the start
-            round_players.extend(shuffled_players[:(8 - len(round_players))])
-        
-        # Create the schedule for this round
-        CompetitionSchedule.objects.create(
-            competition=competition,
-            round=round_num,
-            side_1_player_1=round_players[0],
-            side_1_player_2=round_players[1],
-            side_1_player_3=round_players[2],
-            side_1_player_4=round_players[3],
-            side_2_player_1=round_players[4],
-            side_2_player_2=round_players[5],
-            side_2_player_3=round_players[6],
-            side_2_player_4=round_players[7]
-        )
-        
-        # Remove these players from remaining_players
-        remaining_players -= set(round_players[:8])
-        
-        # Rotate the players list for next round
-        shuffled_players = shuffled_players[8:] + shuffled_players[:8]
-        round_num += 1
+    # Generate schedule
+    schedule_entries = create_round_robin_schedule(
+        competition.id, 
+        player_dicts, 
+        team_size=team_size,
+        parallel_matches=competition.parallel_matches,
+        max_rounds=competition.max_rounds
+    )
+    
+    logger.info(f"Generated {len(schedule_entries)} schedule entries")
+    
+    # Create CompetitionSchedule objects
+    created_entries = []
+    for entry in schedule_entries:
+        # Replace competition ID with competition object
+        entry['competition'] = competition
+        # Replace player IDs with CompetitionUser objects
+        for field in ['side_1_player_1', 'side_1_player_2', 'side_1_player_3', 'side_1_player_4',
+                     'side_2_player_1', 'side_2_player_2', 'side_2_player_3', 'side_2_player_4']:
+            if entry[field] is not None:
+                entry[field] = player_map[entry[field]]
+        created = CompetitionSchedule.objects.create(**entry)
+        created_entries.append(created)
+        logger.info(f"Created schedule entry for round {entry['round']}.{entry['sub_round']}")
 
     # Update competition status
     competition.status = 'scheduled'
     competition.save()
+    
+    logger.info(f"Successfully created {len(created_entries)} schedule entries")
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
@@ -311,6 +389,7 @@ def create_schedule(request, competition_id):
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
+        logger.error(f"Error creating schedule: {str(e)}", exc_info=True)
         return Response(
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
