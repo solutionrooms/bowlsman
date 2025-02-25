@@ -837,47 +837,62 @@ export default function ManageCompetitions() {
                   {/* Add Player Section */}
                   <div className="mb-6 p-4 bg-gray-50 rounded-lg">
                     <h4 className="text-md font-medium mb-3">Add Player</h4>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={newPlayerName}
-                        onChange={(e) => {
-                          setNewPlayerName(e.target.value);
-                          setSelectedUser(null);
-                        }}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        placeholder="Search for a player or enter guest name"
-                        autoFocus
-                      />
-                      {showUserDropdown && (
-                        <div className="absolute z-10 w-full mt-1 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">
-                          {filteredUsers.map(user => (
-                            <div
-                              key={user.id}
-                              className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                              onClick={() => handleSelectUser(user)}
-                            >
-                              {user.display_name}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    
-                    {error && (
-                      <div className="mt-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
-                        {error}
+                    {managingPlayers.is_full || managingPlayers.available_slots <= 0 ? (
+                      <div className="p-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md">
+                        <p className="text-sm font-medium">Maximum number of players reached</p>
+                        <p className="text-xs mt-1">Remove a player to add a new one.</p>
                       </div>
+                    ) : (
+                      <>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={newPlayerName}
+                            onChange={(e) => {
+                              setNewPlayerName(e.target.value);
+                              setSelectedUser(null);
+                            }}
+                            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            placeholder="Search for a player or enter guest name"
+                            autoFocus
+                          />
+                          {showUserDropdown && (
+                            <div className="absolute z-10 w-full mt-1 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">
+                              {filteredUsers.map(user => (
+                                <div
+                                  key={user.id}
+                                  className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                                  onClick={() => handleSelectUser(user)}
+                                >
+                                  {user.display_name}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {error && (
+                          <div className="mt-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
+                            {error}
+                          </div>
+                        )}
+                        
+                        {newPlayerName && !showUserDropdown && (
+                          <button
+                            onClick={() => addPlayer()}
+                            className="mt-2 bg-blue-600 text-white px-3 py-1 text-sm rounded hover:bg-blue-700"
+                            disabled={!newPlayerName}
+                          >
+                            Add as Guest
+                          </button>
+                        )}
+                      </>
                     )}
                     
-                    {newPlayerName && !showUserDropdown && (
-                      <button
-                        onClick={() => addPlayer()}
-                        className="mt-2 bg-blue-600 text-white px-3 py-1 text-sm rounded hover:bg-blue-700"
-                        disabled={!newPlayerName}
-                      >
-                        Add as Guest
-                      </button>
+                    {!managingPlayers.is_full && managingPlayers.available_slots > 0 && (
+                      <div className="mt-2 text-xs text-gray-500">
+                        {managingPlayers.available_slots} {managingPlayers.available_slots === 1 ? 'slot' : 'slots'} remaining
+                      </div>
                     )}
                   </div>
 
