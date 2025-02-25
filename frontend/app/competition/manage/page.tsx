@@ -7,6 +7,7 @@ import { EllipsisVerticalIcon, XMarkIcon as XIcon, Bars3Icon as GripVerticalIcon
 import Navigation from '../../components/Navigation';
 import api from '../../../src/lib/axios';
 import { notification } from 'antd';
+import React from 'react';
 
 interface User {
   id: number;
@@ -87,10 +88,38 @@ export default function ManageCompetitions() {
   const [showReplacePlayerModal, setShowReplacePlayerModal] = useState(false);
   const [selectedPlayerToReplace, setSelectedPlayerToReplace] = useState<Player | null>(null);
   const router = useRouter();
-
+  
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Add click outside handler
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      // Only close if clicking outside any menu button or menu content
+      if (openMenuId !== null) {
+        // Check if the click was on a menu toggle button (which has its own handler)
+        const isMenuButton = (event.target as Element).closest('[data-menu-button]');
+        if (!isMenuButton) {
+          // Check if the click was inside a menu
+          const isInsideMenu = (event.target as Element).closest('[data-menu-content]');
+          if (!isInsideMenu) {
+            setOpenMenuId(null);
+          }
+        }
+      }
+    }
+
+    // Add event listener when dropdown is open
+    if (openMenuId !== null) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    // Clean up event listener
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [openMenuId]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -475,11 +504,11 @@ export default function ManageCompetitions() {
                         )}
                         {competition.status === 'scheduled' ? (
                           <button
-                            onClick={() => handleDeleteSchedule(competition)}
-                            className="ml-2 px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
-                            title="Delete Schedule"
+                            onClick={() => handleViewSchedule(competition)}
+                            className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200"
+                            title="View Schedule"
                           >
-                            Delete Schedule
+                            View Schedule
                           </button>
                         ) : competition.is_full ? (
                           <button
@@ -504,12 +533,13 @@ export default function ManageCompetitions() {
                           <button
                             onClick={() => toggleMenu(competition.id)}
                             className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
+                            data-menu-button
                           >
                             <EllipsisVerticalIcon className="h-6 w-6" />
                           </button>
                           
                           {openMenuId === competition.id && (
-                            <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                            <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10" data-menu-content>
                               <div className="py-1" role="menu">
                                 <button
                                   onClick={() => {
@@ -592,12 +622,13 @@ export default function ManageCompetitions() {
                       <button
                         onClick={() => toggleMenu(competition.id)}
                         className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
+                        data-menu-button
                       >
                         <EllipsisVerticalIcon className="h-6 w-6" />
                       </button>
                       
                       {openMenuId === competition.id && (
-                        <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                        <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10" data-menu-content>
                           <div className="py-1" role="menu">
                             <button
                               onClick={() => {
@@ -706,11 +737,11 @@ export default function ManageCompetitions() {
                         </span>
                         {competition.status === 'scheduled' ? (
                           <button
-                            onClick={() => handleDeleteSchedule(competition)}
-                            className="ml-2 px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
-                            title="Delete Schedule"
+                            onClick={() => handleViewSchedule(competition)}
+                            className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200"
+                            title="View Schedule"
                           >
-                            Delete
+                            View
                           </button>
                         ) : competition.is_full ? (
                           <button
