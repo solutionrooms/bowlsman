@@ -28,6 +28,11 @@ interface Player {
   order: number;
 }
 
+interface Club {
+  id: number;
+  name: string;
+}
+
 interface Competition {
   id: number;
   name: string;
@@ -87,6 +92,8 @@ export default function ManageCompetitions() {
   const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
   const [showReplacePlayerModal, setShowReplacePlayerModal] = useState(false);
   const [selectedPlayerToReplace, setSelectedPlayerToReplace] = useState<Player | null>(null);
+  const [currentClub, setCurrentClub] = useState<Club | null>(null);
+  const [userClubs, setUserClubs] = useState<Club[]>([]);
   const router = useRouter();
   
   useEffect(() => {
@@ -130,14 +137,47 @@ export default function ManageCompetitions() {
       return;
     }
 
+    // Get current club from localStorage
+    const storedCurrentClub = localStorage.getItem('currentClub');
+    if (storedCurrentClub) {
+      try {
+        setCurrentClub(JSON.parse(storedCurrentClub));
+      } catch (e) {
+        console.error('Error parsing stored club:', e);
+      }
+    }
+
     const fetchData = async () => {
       try {
-        const [userResponse, competitionsResponse, usersResponse] = await Promise.all([
-          api.get<User>('/users/me/'),
-          api.get<Competition[]>('/competitions/'),
-          api.get<User[]>('/users/')
+        // First get user data
+        const userResponse = await api.get<{user: User, clubs: Club[], current_club: Club | null}>('/users/me/');
+        setUser(userResponse.data.user);
+        
+        // Set user clubs
+        const clubs = userResponse.data.clubs || [];
+        setUserClubs(clubs);
+        
+        // Update current club if needed
+        if (userResponse.data.current_club && (!currentClub || currentClub.id !== userResponse.data.current_club.id)) {
+          setCurrentClub(userResponse.data.current_club);
+          localStorage.setItem('currentClub', JSON.stringify(userResponse.data.current_club));
+        } else if (!userResponse.data.current_club && clubs.length > 0 && !currentClub) {
+          // Default to first club if no current club
+          setCurrentClub(clubs[0]);
+          localStorage.setItem('currentClub', JSON.stringify(clubs[0]));
+        }
+        
+        // Use the current club to filter competitions and users
+        const clubId = currentClub?.id || (clubs.length > 0 ? clubs[0].id : null);
+        
+        const params = clubId ? { club_id: clubId } : {};
+        
+        // Get competitions and users with club filter
+        const [competitionsResponse, usersResponse] = await Promise.all([
+          api.get<Competition[]>('/competitions/', { params }),
+          api.get<User[]>('/users/', { params })
         ]);
-        setUser(userResponse.data);
+        
         setCompetitions(competitionsResponse.data);
         setAllUsers(usersResponse.data);
       } catch (error) {
@@ -147,7 +187,7 @@ export default function ManageCompetitions() {
     };
 
     fetchData();
-  }, [mounted]);
+  }, [mounted, currentClub?.id]);
 
   useEffect(() => {
     if (newPlayerName.trim() === '') {
@@ -447,18 +487,63 @@ export default function ManageCompetitions() {
     }
   };
 
+  // Add a handleLogout function for the Navigation component
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    router.push('/');
+  };
+
   if (!user) {
     return <div>Loading...</div>;
   }
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Navigation isStaff={user.is_staff} />
+      <Navigation onLogout={handleLogout} />
       
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white shadow rounded-lg p-6">
-            <h1 className="text-2xl font-bold mb-6">Manage Competitions</h1>
+            <div className="flex justify-between items-center mb-6">
+              <h1 className="text-2xl font-bold">Manage Competitions</h1>
+              <div className="flex items-center space-x-4">
+                {userClubs.length > 1 && (
+                  <div>
+                    <select
+                      value={currentClub?.id || ''}
+                      onChange={async (e) => {
+                        const clubId = e.target.value;
+                        const selected = userClubs.find(c => c.id === parseInt(clubId));
+                        if (selected) {
+                          // Update locally
+                          setCurrentClub(selected);
+                          localStorage.setItem('currentClub', JSON.stringify(selected));
+                          
+                          // Update on the backend
+                          try {
+                            await api.put('/club-users/set-current-club/', { club_id: selected.id });
+                          } catch (error) {
+                            console.error('Error updating current club on backend:', error);
+                            // Continue anyway, as we've updated it locally
+                          }
+                        }
+                      }}
+                      className="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    >
+                      {userClubs.map(club => (
+                        <option key={club.id} value={club.id}>{club.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <button 
+                  onClick={() => router.push('/competition/create')} 
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  Create Competition
+                </button>
+              </div>
+            </div>
             
             {/* Desktop Table View */}
             <div className="hidden md:block overflow-x-auto">

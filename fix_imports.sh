@@ -1,3 +1,7 @@
+#!/bin/bash
+
+# Create a temporary file with the updated axios.ts content
+cat > axios_temp.ts << 'EOF'
 import axios from "axios";
 
 // Debug environment variable
@@ -25,15 +29,9 @@ instance.interceptors.request.use((config) => {
   }
   
   if (config.url) {
-    // Remove any leading slashes
-    const cleanUrl = config.url.replace(/^\/+/, '');
-    
-    // Don't add 'api/' prefix again if it's already there
-    if (!cleanUrl.startsWith('api/')) {
-      config.url = `api/${cleanUrl}`;
-    } else {
-      config.url = cleanUrl;
-    }
+    // Remove any leading slashes and ensure api prefix
+    const cleanUrl = config.url.replace(/^\/+/, '').replace(/^api\//, '');
+    config.url = `api/${cleanUrl}`;
   }
 
   // Log the full URL for debugging
@@ -53,3 +51,15 @@ instance.interceptors.request.use((config) => {
 });
 
 export default instance;
+EOF
+
+# Copy the temporary file to all necessary locations
+docker cp axios_temp.ts bowlsman-frontend-1:/app/app/src/lib/axios.ts
+docker cp axios_temp.ts bowlsman-frontend-1:/app/src/lib/axios.ts
+
+# Remove the temporary file
+rm axios_temp.ts
+
+# Clear the Next.js cache and restart the frontend container
+docker exec -it bowlsman-frontend-1 rm -rf /app/.next
+docker restart bowlsman-frontend-1 

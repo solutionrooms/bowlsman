@@ -6,13 +6,163 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
-from .serializers import UserSerializer, CompetitionSerializer, CompetitionUserSerializer, CompetitionScheduleSerializer
-from .models import Competition, CompetitionUser, CompetitionSchedule
+from django.utils import timezone
+from .serializers import (
+    UserSerializer, CompetitionSerializer, CompetitionUserSerializer, 
+    CompetitionScheduleSerializer, ClubSerializer, ClubUserSerializer
+)
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser
 import logging
 import random
 from .scheduling import create_round_robin_schedule
+from django.db import models
 
 logger = logging.getLogger(__name__)
+
+class ClubViewSet(viewsets.ModelViewSet):
+    serializer_class = ClubSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only superusers can see all clubs
+        if self.request.user.is_superuser:
+            return Club.objects.all()
+        # Regular users can only see clubs they are members of
+        return Club.objects.filter(members__user=self.request.user)
+
+    def perform_create(self, serializer):
+        club = serializer.save()
+        # Add the user who created the club as an admin
+        ClubUser.objects.create(user=self.request.user, club=club, is_admin=True)
+
+    @action(detail=True, methods=['post'])
+    def add_user(self, request, pk=None):
+        club = self.get_object()
+        
+        # Check if the user is an admin of this club
+        if not ClubUser.objects.filter(user=request.user, club=club, is_admin=True).exists() and not request.user.is_superuser:
+            return Response(
+                {'error': 'Only club admins can add users'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        user_id = request.data.get('user_id')
+        username = request.data.get('username')
+        is_admin = request.data.get('is_admin', False)
+        
+        if not user_id and not username:
+            return Response(
+                {'error': 'User ID or username must be provided'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            if user_id:
+                user = User.objects.get(id=user_id)
+            else:
+                user = User.objects.get(username=username)
+                
+            # Check if user is already a member
+            if ClubUser.objects.filter(user=user, club=club).exists():
+                return Response(
+                    {'error': 'User is already a member of this club'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            club_user = ClubUser.objects.create(
+                user=user, 
+                club=club,
+                is_admin=is_admin
+            )
+            
+            return Response(
+                ClubUserSerializer(club_user).data, 
+                status=status.HTTP_201_CREATED
+            )
+            
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['post'])
+    def remove_user(self, request, pk=None):
+        club = self.get_object()
+        
+        # Check if the user is an admin of this club
+        if not ClubUser.objects.filter(user=request.user, club=club, is_admin=True).exists() and not request.user.is_superuser:
+            return Response(
+                {'error': 'Only club admins can remove users'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response(
+                {'error': 'User ID must be provided'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            club_user = ClubUser.objects.get(user_id=user_id, club=club)
+            
+            # Prevent removing the last admin
+            if club_user.is_admin and ClubUser.objects.filter(club=club, is_admin=True).count() <= 1:
+                return Response(
+                    {'error': 'Cannot remove the last admin of the club'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            club_user.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+        except ClubUser.DoesNotExist:
+            return Response(
+                {'error': 'User is not a member of this club'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+class ClubUserViewSet(viewsets.ModelViewSet):
+    serializer_class = ClubUserSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.is_superuser:
+            return ClubUser.objects.all()
+        
+        # Users can only see their own memberships or memberships in clubs they administer
+        admin_clubs = ClubUser.objects.filter(user=self.request.user, is_admin=True).values_list('club_id', flat=True)
+        return ClubUser.objects.filter(
+            models.Q(user=self.request.user) | models.Q(club_id__in=admin_clubs)
+        )
+
+    @action(detail=False, methods=['put'])
+    def set_current_club(self, request):
+        club_id = request.data.get('club_id')
+        if not club_id:
+            return Response(
+                {'error': 'Club ID must be provided'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            club_user = ClubUser.objects.get(user=request.user, club_id=club_id)
+            club_user.last_login_at = timezone.now()
+            club_user.save()
+            
+            return Response({
+                'message': 'Current club updated',
+                'club': ClubSerializer(club_user.club).data
+            })
+            
+        except ClubUser.DoesNotExist:
+            return Response(
+                {'error': 'You are not a member of this club'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -27,7 +177,17 @@ class UserViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 
     def get_queryset(self):
-        return User.objects.all().order_by('-is_active', 'username')
+        queryset = User.objects.all().order_by('-is_active', 'username')
+        
+        # Filter by club_id if specified in query params
+        club_id = self.request.query_params.get('club_id')
+        if club_id and club_id.isdigit():
+            club_id = int(club_id)
+            # Get users who are members of the specified club
+            club_user_ids = ClubUser.objects.filter(club_id=club_id).values_list('user_id', flat=True)
+            queryset = queryset.filter(id__in=club_user_ids)
+            
+        return queryset
 
     def perform_destroy(self, instance):
         instance.is_active = False
@@ -49,41 +209,96 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def me(self, request):
-        if not request.user.is_authenticated:
-            return Response({'error': 'Not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
-        logger.info(f'User {request.user.username} accessed their profile')
-        serializer = self.get_serializer(request.user)
-        return Response(serializer.data)
+        if request.user.is_authenticated:
+            serializer = UserSerializer(request.user)
+            
+            # Get the user's current or last club
+            current_club = None
+            club_users = ClubUser.objects.filter(user=request.user).order_by('-last_login_at')
+            
+            if club_users.exists():
+                current_club = ClubSerializer(club_users.first().club).data
+                
+            return Response({
+                'user': serializer.data,
+                'current_club': current_club
+            })
+        return Response({'error': 'Not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
 
     def perform_create(self, serializer):
-        logger.info(f'Creating new user with data: {serializer.validated_data}')
-        user = serializer.save()
-        user.set_password(serializer.validated_data['password'])
-        user.save()
-        logger.info(f'User created successfully: {user.username}')
+        serializer.save()
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
     def login(self, request):
         username = request.data.get('username')
         password = request.data.get('password')
-        logger.info(f'Login attempt for user: {username}')
+        club_id = request.data.get('club_id')
+        
+        if not username or not password:
+            return Response(
+                {'error': 'Username and password are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         user = authenticate(username=username, password=password)
-        logger.info(f'Authentication result for {username}: {"success" if user else "failed"}')
         
-        if user:
-            token, _ = Token.objects.get_or_create(user=user)
-            logger.info(f'Token generated for user {username}')
+        if not user:
+            return Response(
+                {'error': 'Invalid credentials'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        if not user.is_active:
+            return Response(
+                {'error': 'User account is disabled'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Get or create token
+        token, created = Token.objects.get_or_create(user=user)
+        
+        # User's clubs
+        club_users = ClubUser.objects.filter(user=user)
+        
+        if not club_users.exists():
+            # No clubs for this user
             return Response({
                 'token': token.key,
-                'user_id': user.id,
-                'is_staff': user.is_staff
-            })
-        logger.warning(f'Login failed for user: {username}')
-        return Response(
-            {'error': 'Invalid credentials'}, 
-            status=status.HTTP_401_UNAUTHORIZED
-        )
+                'user': UserSerializer(user).data,
+                'clubs': [],
+                'error': 'User is not a member of any club'
+            }, status=status.HTTP_200_OK)
+        
+        # If club_id is provided, set it as current
+        current_club = None
+        if club_id:
+            try:
+                club_user = club_users.get(club_id=club_id)
+                club_user.last_login_at = timezone.now()
+                club_user.save()
+                current_club = ClubSerializer(club_user.club).data
+            except ClubUser.DoesNotExist:
+                # Club ID provided but user is not a member
+                return Response({
+                    'token': token.key,
+                    'user': UserSerializer(user).data,
+                    'clubs': [ClubSerializer(cu.club).data for cu in club_users],
+                    'error': 'You are not a member of the selected club'
+                }, status=status.HTTP_200_OK)
+        else:
+            # No club_id provided, use the most recent one
+            most_recent = club_users.order_by('-last_login_at').first()
+            if most_recent:
+                most_recent.last_login_at = timezone.now()
+                most_recent.save()
+                current_club = ClubSerializer(most_recent.club).data
+        
+        return Response({
+            'token': token.key,
+            'user': UserSerializer(user).data,
+            'clubs': [ClubSerializer(cu.club).data for cu in club_users],
+            'current_club': current_club
+        })
 
 class CompetitionViewSet(viewsets.ModelViewSet):
     serializer_class = CompetitionSerializer
@@ -91,7 +306,16 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Competition.objects.filter(creator=self.request.user)
+        # Users can only see competitions from clubs they are members of
+        user_clubs = ClubUser.objects.filter(user=self.request.user).values_list('club_id', flat=True)
+        queryset = Competition.objects.filter(club_id__in=user_clubs)
+        
+        # Filter by club_id if specified in query params
+        club_id = self.request.query_params.get('club_id')
+        if club_id and club_id.isdigit():
+            queryset = queryset.filter(club=int(club_id))
+            
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(creator=self.request.user)
@@ -99,6 +323,13 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def add_player(self, request, pk=None):
         competition = self.get_object()
+        
+        # Check if user belongs to the club
+        if not ClubUser.objects.filter(user=request.user, club=competition.club).exists() and not request.user.is_superuser:
+            return Response(
+                {'error': 'You must be a member of the club to add players'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         if competition.status == 'scheduled':
             return Response(
@@ -155,6 +386,13 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     def remove_player(self, request, pk=None):
         competition = self.get_object()
         
+        # Check if user belongs to the club
+        if not ClubUser.objects.filter(user=request.user, club=competition.club).exists() and not request.user.is_superuser:
+            return Response(
+                {'error': 'You must be a member of the club to remove players'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         if competition.status == 'scheduled':
             return Response(
                 {"error": "Cannot remove players from a scheduled competition"}, 
@@ -182,24 +420,46 @@ class CompetitionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def schedule(self, request, pk=None):
-        """Get the schedule for a competition"""
         competition = self.get_object()
+        
+        # Check if user belongs to the club
+        if not ClubUser.objects.filter(user=request.user, club=competition.club).exists() and not request.user.is_superuser:
+            return Response(
+                {'error': 'You must be a member of the club to view schedule'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         schedules = CompetitionSchedule.objects.filter(competition=competition).order_by('round')
         serializer = CompetitionScheduleSerializer(schedules, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['delete'])
     def delete_schedule(self, request, pk=None):
-        """Delete the entire schedule for a competition"""
         competition = self.get_object()
+        
+        # Check if user belongs to the club
+        if not ClubUser.objects.filter(user=request.user, club=competition.club).exists() and not request.user.is_superuser:
+            return Response(
+                {'error': 'You must be a member of the club to delete schedule'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         CompetitionSchedule.objects.filter(competition=competition).delete()
         competition.update_status()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        
+        # Return success response
+        return Response({'message': 'Schedule successfully deleted'}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'])
     def create_schedule(self, request, pk=None):
-        """Create a schedule for a competition"""
         competition = self.get_object()
+        
+        # Check if user belongs to the club
+        if not ClubUser.objects.filter(user=request.user, club=competition.club).exists() and not request.user.is_superuser:
+            return Response(
+                {'error': 'You must be a member of the club to create schedule'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Check if competition is full
         if not competition.is_full:
@@ -229,8 +489,14 @@ class CompetitionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def replace_player(self, request, pk=None):
-        """Replace a player in a competition, even if it's scheduled"""
         competition = self.get_object()
+        
+        # Check if user belongs to the club
+        if not ClubUser.objects.filter(user=request.user, club=competition.club).exists() and not request.user.is_superuser:
+            return Response(
+                {'error': 'You must be a member of the club to replace players'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         old_player_id = request.data.get('old_player_id')
         new_user_id = request.data.get('new_user_id')
@@ -302,7 +568,9 @@ class CompetitionUserViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return CompetitionUser.objects.filter(competition__creator=self.request.user)
+        # Users can only see competition users from clubs they are members of
+        user_clubs = ClubUser.objects.filter(user=self.request.user).values_list('club_id', flat=True)
+        return CompetitionUser.objects.filter(competition__club_id__in=user_clubs)
 
 def create_dummy_schedule(competition, players, team_size=2):
     """

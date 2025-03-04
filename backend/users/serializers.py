@@ -1,15 +1,43 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Competition, CompetitionUser, CompetitionSchedule
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser
+
+class ClubSerializer(serializers.ModelSerializer):
+    member_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Club
+        fields = ['id', 'name', 'address', 'created_at', 'member_count']
+        read_only_fields = ['created_at', 'member_count']
+
+    def get_member_count(self, obj):
+        return obj.members.count()
+
+class ClubUserSerializer(serializers.ModelSerializer):
+    user_details = serializers.SerializerMethodField()
+    club_name = serializers.CharField(source='club.name', read_only=True)
+
+    class Meta:
+        model = ClubUser
+        fields = ['id', 'user', 'club', 'club_name', 'is_admin', 'created_at', 'last_login_at', 'user_details']
+        read_only_fields = ['created_at', 'last_login_at']
+
+    def get_user_details(self, obj):
+        return {
+            'id': obj.user.id,
+            'username': obj.user.username,
+            'display_name': f"{obj.user.first_name} {obj.user.last_name}" if obj.user.first_name or obj.user.last_name else obj.user.username
+        }
 
 class UserSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     search_name = serializers.SerializerMethodField()
     password = serializers.CharField(write_only=True, required=False)
+    clubs = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'is_active', 'is_staff', 'password', 'first_name', 'last_name', 'display_name', 'search_name']
+        fields = ['id', 'username', 'email', 'is_active', 'is_staff', 'password', 'first_name', 'last_name', 'display_name', 'search_name', 'clubs']
         extra_kwargs = {
             'password': {'write_only': True},
             'username': {'required': True},
@@ -23,6 +51,18 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_search_name(self, obj):
         return f"{obj.first_name} {obj.last_name} {obj.username}".lower()
+    
+    def get_clubs(self, obj):
+        club_users = ClubUser.objects.filter(user=obj)
+        return [
+            {
+                'id': club_user.club.id,
+                'name': club_user.club.name,
+                'is_admin': club_user.is_admin,
+                'last_login_at': club_user.last_login_at
+            }
+            for club_user in club_users
+        ]
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
@@ -68,11 +108,13 @@ class CompetitionSerializer(serializers.ModelSerializer):
     is_full = serializers.BooleanField(read_only=True)
     players = CompetitionUserSerializer(source='competition_users', many=True, read_only=True)
     available_slots = serializers.SerializerMethodField()
+    club_name = serializers.CharField(source='club.name', read_only=True)
 
     class Meta:
         model = Competition
         fields = ['id', 'name', 'created_at', 'num_players', 'creator', 'creator_name', 
-                 'rule_set_id', 'is_full', 'players', 'available_slots', 'status', 'parallel_matches', 'max_rounds']
+                 'rule_set_id', 'is_full', 'players', 'available_slots', 'status', 
+                 'parallel_matches', 'max_rounds', 'club', 'club_name']
         read_only_fields = ['creator', 'created_at', 'status']
 
     def get_available_slots(self, obj):

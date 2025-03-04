@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, FormEvent, ChangeEvent } from 'react';
-import { useEffect } from 'react';
+import React, { useState, FormEvent, ChangeEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '../src/lib/axios';
 
@@ -11,14 +10,21 @@ interface ApiError {
 
 interface LoginResponse {
   token: string;
-  user_id: number;
-  is_staff: boolean;
+  user: User;
+  clubs: Club[];
+  current_club: Club | null;
+  error?: string;
 }
 
 interface User {
   username: string;
   email: string;
   is_staff: boolean;
+}
+
+interface Club {
+  id: number;
+  name: string;
 }
 
 export default function Home() {
@@ -28,65 +34,138 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
   const [isLogin, setIsLogin] = useState(true);
+  const [showClubSelection, setShowClubSelection] = useState(false);
+  const [clubs, setClubs] = useState<Club[]>([]);
+  const [selectedClubId, setSelectedClubId] = useState<number | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
-    const token = localStorage.getItem('token');
-    if (token) {
-      checkUserRole();
-    }
   }, []);
 
-  const checkUserRole = async () => {
+  useEffect(() => {
+    if (!mounted) return;
+    
+    const token = localStorage.getItem('token');
+    if (token) {
+      checkUserAuth();
+    }
+  }, [mounted]);
+
+  const checkUserAuth = async () => {
     try {
+      if (!mounted) return;
+      
       const token = localStorage.getItem('token');
-      const response = await api.get<User>('/users/me/', {
+      if (!token) return;
+
+      const response = await api.get<{ user: User, current_club: Club | null }>('/users/me/', {
         headers: { Authorization: `Token ${token}` }
       });
-      if (response.data.is_staff) {
-        router.push('/admin');
+
+      if (response.data.current_club) {
+        localStorage.setItem('currentClub', JSON.stringify(response.data.current_club));
+        router.push('/home');
+      } else {
+        // User has no current club, check if they have any clubs
+        const clubsResponse = await api.get<Club[]>('/clubs/', {
+          headers: { Authorization: `Token ${token}` }
+        });
+
+        if (clubsResponse.data.length > 0) {
+          setClubs(clubsResponse.data);
+          setShowClubSelection(true);
+        } else {
+          // User has no clubs, redirect to club creation
+          localStorage.removeItem('token');
+          setMessage('You need to create or join a club first.');
+        }
       }
     } catch (error) {
-      localStorage.removeItem('token');
+      console.error('Authentication error:', error);
+      if (mounted) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('currentClub');
+      }
     }
   };
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setMessage('');
+
     try {
       if (isLogin) {
-        console.log('Attempting login for user:', username);
-        const response = await api.post<LoginResponse>('users/login/', {
+        // Login
+        const response = await api.post<LoginResponse>('/login/', {
           username,
           password
         });
-        console.log('Login response:', response.data);
-        localStorage.setItem('token', response.data.token);
-        setMessage('Login successful!');
-        console.log('Redirecting user based on role:', response.data.is_staff ? 'admin' : 'regular user');
-        if (response.data.is_staff) {
-          router.push('/admin');
+
+        if (response.data.token) {
+          if (mounted) {
+            localStorage.setItem('token', response.data.token); // Save token for club selection
+          }
+          
+          if (response.data.current_club) {
+            if (mounted) {
+              localStorage.setItem('token', response.data.token);
+              localStorage.setItem('currentClub', JSON.stringify(response.data.current_club));
+            }
+            router.push('/home');
+          } else if (response.data.clubs && response.data.clubs.length > 0) {
+            setClubs(response.data.clubs);
+            setShowClubSelection(true);
+          } else {
+            router.push('/club/create');
+          }
         } else {
-          router.push('/home');
+          setMessage(response.data.error || 'Login failed. Please try again.');
         }
       } else {
-        console.log('Attempting registration for user:', username);
-        await api.post<User>('/users/', {
+        // Register
+        const response = await api.post<LoginResponse | ApiError>('/users/register/', {
           username,
-          email,
           password,
-          is_staff: false,
-          is_active: true
+          email
         });
-        setMessage('Registration successful! Please login.');
-        setIsLogin(true);
+
+        if ('token' in response.data) {
+          setMessage('Registration successful! Please log in.');
+          setIsLogin(true);
+        } else {
+          setMessage(response.data.error || 'Registration failed. Please try again.');
+        }
+      }
+    } catch (error: any) {
+      console.error('Error:', error);
+      setMessage(error.response?.data?.error || 'An error occurred. Please try again.');
+    }
+  };
+
+  const handleClubSelect = async () => {
+    if (!selectedClubId) {
+      setMessage('Please select a club.');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await api.put<{message: string, club: Club}>(
+        'club-users/set-current-club/',
+        { club_id: selectedClubId },
+        { headers: { Authorization: `Token ${token}` } }
+      );
+      
+      // Find the selected club in the clubs list
+      const selectedClub = clubs.find(club => club.id === selectedClubId);
+      if (selectedClub) {
+        localStorage.setItem('currentClub', JSON.stringify(selectedClub));
+        router.push('/home');
       }
     } catch (error) {
-      console.error('Full error object:', error);
-      const axiosError = error as any;
-      console.error('Error response:', axiosError?.response?.data);
-      setMessage(axiosError?.response?.data?.error || 'An error occurred');
+      console.error('Error selecting club:', error);
+      setMessage('Failed to select club. Please try again.');
     }
   };
 
@@ -98,98 +177,95 @@ export default function Home() {
     return null;
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h1 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Welcome
-          </h1>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            {isLogin ? 'Sign in to your account' : 'Create a new account'}
-          </p>
+  if (showClubSelection) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="bg-white p-8 rounded-lg shadow-md w-96">
+          <h1 className="text-2xl font-bold mb-6 text-center">Select Your Club</h1>
+          {message && <p className="mb-4 text-red-500">{message}</p>}
+          <div className="space-y-4">
+            {clubs.map(club => (
+              <button
+                key={club.id}
+                onClick={() => {
+                  setSelectedClubId(club.id);
+                  handleClubSelect();
+                }}
+                className="w-full py-2 px-4 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
+              >
+                {club.name}
+              </button>
+            ))}
+          </div>
         </div>
+      </div>
+    );
+  }
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="username" className="sr-only">
-                Username
-              </label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Username"
-                value={username}
-                onChange={(e) => handleInputChange(e, setUsername)}
-              />
-            </div>
-
-            {!isLogin && (
-              <div>
-                <label htmlFor="email" className="sr-only">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => handleInputChange(e, setEmail)}
-                />
-              </div>
-            )}
-
-            <div>
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => handleInputChange(e, setPassword)}
-              />
-            </div>
-          </div>
-
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="bg-white p-8 rounded-lg shadow-md w-96">
+        <h1 className="text-2xl font-bold mb-6 text-center">
+          {isLogin ? 'Login to Bowlsman' : 'Create an Account'}
+        </h1>
+        {message && <p className="mb-4 text-red-500">{message}</p>}
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <button
-              type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              {isLogin ? 'Sign in' : 'Register'}
-            </button>
+            <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+              Username
+            </label>
+            <input
+              type="text"
+              id="username"
+              value={username}
+              onChange={(e) => handleInputChange(e, setUsername)}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
           </div>
-
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={() => setIsLogin(!isLogin)}
-              className="font-medium text-indigo-600 hover:text-indigo-500"
-            >
-              {isLogin ? 'Need an account? Register' : 'Already have an account? Login'}
-            </button>
+          {!isLogin && (
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email
+              </label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => handleInputChange(e, setEmail)}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                required={!isLogin}
+              />
+            </div>
+          )}
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              Password
+            </label>
+            <input
+              type="password"
+              id="password"
+              value={password}
+              onChange={(e) => handleInputChange(e, setPassword)}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
           </div>
+          <button
+            type="submit"
+            className="w-full py-2 px-4 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
+          >
+            {isLogin ? 'Login' : 'Register'}
+          </button>
         </form>
-
-        {message && (
-          <div className={`mt-4 text-center text-sm font-medium ${
-            message.includes('successful') ? 'text-green-600' : 'text-red-600'
-          }`}>
-            {message}
-          </div>
-        )}
+        <div className="mt-4 text-center">
+          <button
+            onClick={() => setIsLogin(!isLogin)}
+            className="text-blue-500 hover:underline"
+          >
+            {isLogin ? 'Need an account? Register' : 'Already have an account? Login'}
+          </button>
+        </div>
       </div>
     </div>
   );

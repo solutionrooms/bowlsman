@@ -15,9 +15,18 @@ interface User {
 
 export default function AdminPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
+  // Set mounted to true after component mounts
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    // Only run if the component is mounted
+    if (!mounted) return;
+
     const token = localStorage.getItem('token');
     if (!token) {
       router.push('/');
@@ -41,7 +50,12 @@ export default function AdminPage() {
     };
 
     fetchData();
-  }, []);
+  }, [mounted, router]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    router.push('/');
+  };
 
   if (!currentUser) {
     return <div>Loading...</div>;
@@ -49,7 +63,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Navigation isStaff={true} />
+      <Navigation onLogout={handleLogout} />
       <ManageUsers />
     </div>
   );

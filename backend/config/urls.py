@@ -2,16 +2,17 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from users.views import UserViewSet, CompetitionViewSet, CompetitionUserViewSet
+from users.views import UserViewSet
 
+# Only register viewsets that aren't already in users.urls
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
-router.register(r'competitions', CompetitionViewSet, basename='competition')
-router.register(r'competition-users', CompetitionUserViewSet, basename='competition-user')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
+    path('api/', include('users.urls')),  # Include the users app URLs
+    path('api/', include('api.urls')),    # Include the api app URLs
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ] 

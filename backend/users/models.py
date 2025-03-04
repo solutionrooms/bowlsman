@@ -1,6 +1,31 @@
 from django.db import models
 from django.contrib.auth.models import User
 
+class Club(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    address = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+class ClubUser(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='club_memberships')
+    club = models.ForeignKey(Club, on_delete=models.CASCADE, related_name='members')
+    is_admin = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ['user', 'club']
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.user.username} at {self.club.name}"
+
 class Competition(models.Model):
     STATUS_CHOICES = [
         ('open', 'Open'),
@@ -8,7 +33,7 @@ class Competition(models.Model):
         ('scheduled', 'Scheduled'),
     ]
 
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
     num_players = models.IntegerField()
     creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name='competitions')
@@ -16,12 +41,14 @@ class Competition(models.Model):
     parallel_matches = models.IntegerField(default=1)  # Number of matches that can be played simultaneously
     max_rounds = models.IntegerField(default=5)  # Maximum number of rounds to generate
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    club = models.ForeignKey(Club, on_delete=models.CASCADE, related_name='competitions')
 
     class Meta:
         ordering = ['-created_at']
+        unique_together = ['name', 'club']
 
     def __str__(self):
-        return self.name
+        return f"{self.name} - {self.club.name}"
     
     @property
     def is_full(self):

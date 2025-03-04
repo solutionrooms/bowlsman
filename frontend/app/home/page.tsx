@@ -13,9 +13,18 @@ interface User {
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
+  // Set mounted to true after component mounts
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    // Only run if the component is mounted to avoid localStorage errors
+    if (!mounted) return;
+
     const token = localStorage.getItem('token');
     console.log('Home page - Token exists:', !!token);
     if (!token) {
@@ -28,23 +37,19 @@ export default function Home() {
       try {
         console.log('Fetching user details');
         const response = await api.get<User>('/users/me/', {
-          headers: { 
-            Authorization: `Token ${token}`
-          }
+          headers: { Authorization: `Token ${token}` }
         });
-        console.log('User details received:', response.data);
+        
         setUser(response.data);
       } catch (error) {
-        console.error('Error fetching user details:', error);
-        const axiosError = error as any;
-        console.error('Error response:', axiosError?.response?.data);
+        console.error('Error fetching user:', error);
         localStorage.removeItem('token');
         router.push('/');
       }
     };
 
     fetchUser();
-  }, []);
+  }, [mounted, router]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -57,7 +62,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Navigation isStaff={user.is_staff} />
+      <Navigation onLogout={handleLogout} />
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">

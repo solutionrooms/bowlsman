@@ -1,9 +1,35 @@
+#!/bin/bash
+
+# Create a temporary file with the updated Navigation.tsx content
+cat > navigation_temp.tsx << 'EOF'
 'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import api from '../../src/lib/axios';
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token && config.headers) {
+    config.headers.Authorization = `Token ${token}`;
+  }
+  
+  if (config.url) {
+    // Remove any leading slashes and ensure api prefix
+    const cleanUrl = config.url.replace(/^\/+/, '').replace(/^api\//, '');
+    config.url = `api/${cleanUrl}`;
+  }
+
+  return config;
+});
 
 interface NavigationProps {
   onLogout: () => void;
@@ -32,7 +58,6 @@ export default function Navigation({ onLogout }: NavigationProps) {
   const [currentClub, setCurrentClub] = useState<Club | null>(null);
   const [userClubs, setUserClubs] = useState<Club[]>([]);
   const [user, setUser] = useState<User | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -71,21 +96,20 @@ export default function Navigation({ onLogout }: NavigationProps) {
   const handleClubChange = async (club: Club) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await api.put<{message: string, club: Club}>(
-        'club-users/set-current-club/',
+      const response = await api.post<{message: string, club: Club}>(
+        '/club-users/set-current-club/',
         { club_id: club.id },
         { headers: { Authorization: `Token ${token}` } }
       );
       
-      localStorage.setItem('currentClub', JSON.stringify(club));
-      setCurrentClub(club);
+      localStorage.setItem('currentClub', JSON.stringify(response.data.club));
+      setCurrentClub(response.data.club);
       setClubDropdownOpen(false);
       
       // Refresh the page to update content for the new club
       window.location.reload();
     } catch (error) {
       console.error('Error changing club:', error);
-      setMessage('Failed to change club. Please try again.');
     }
   };
 
@@ -95,27 +119,27 @@ export default function Navigation({ onLogout }: NavigationProps) {
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center">
             <div className="flex-shrink-0">
-              <Link href="/home" className="text-xl font-bold">
+              <Link href="/dashboard" className="text-xl font-bold">
                 Bowlsman
               </Link>
             </div>
             <div className="hidden md:block">
               <div className="ml-10 flex items-baseline space-x-4">
                 <Link
-                  href="/home"
+                  href="/dashboard"
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === '/home' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                    pathname === '/dashboard' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
                   }`}
                 >
                   Dashboard
                 </Link>
                 <Link
-                  href="/competition/manage"
+                  href="/games"
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                    pathname === '/games' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
                   }`}
                 >
-                  Competitions
+                  Games
                 </Link>
                 <Link
                   href="/bowlers"
@@ -169,11 +193,16 @@ export default function Navigation({ onLogout }: NavigationProps) {
                           <button
                             key={club.id}
                             onClick={() => handleClubChange(club)}
-                            className={`block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${
-                              currentClub.id === club.id ? 'bg-gray-50' : ''
+                            className={`block w-full text-left px-4 py-2 text-sm ${
+                              currentClub.id === club.id
+                                ? 'bg-gray-100 text-gray-900 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
                             }`}
                           >
                             {club.name}
+                            {club.is_admin && (
+                              <span className="ml-2 text-xs text-blue-600">(Admin)</span>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -181,13 +210,17 @@ export default function Navigation({ onLogout }: NavigationProps) {
                   )}
                 </div>
               )}
+              
               {/* User Menu */}
-              <div className="ml-3 relative">
+              <div className="relative">
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="px-3 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
+                  className="flex items-center max-w-xs text-sm rounded-full focus:outline-none"
                 >
-                  {user?.username || 'Menu'}
+                  <span className="sr-only">Open user menu</span>
+                  <div className="h-8 w-8 rounded-full bg-blue-800 flex items-center justify-center">
+                    {user?.username?.charAt(0).toUpperCase() || 'U'}
+                  </div>
                 </button>
                 {dropdownOpen && (
                   <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
@@ -195,14 +228,15 @@ export default function Navigation({ onLogout }: NavigationProps) {
                       <Link
                         href="/profile"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        onClick={() => setDropdownOpen(false)}
                       >
-                        Profile
+                        Your Profile
                       </Link>
                       <button
                         onClick={handleLogout}
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       >
-                        Logout
+                        Sign out
                       </button>
                     </div>
                   </div>
@@ -210,11 +244,10 @@ export default function Navigation({ onLogout }: NavigationProps) {
               </div>
             </div>
           </div>
-          {/* Mobile menu button */}
-          <div className="md:hidden">
+          <div className="-mr-2 flex md:hidden">
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="inline-flex items-center justify-center p-2 rounded-md text-white hover:bg-blue-700 focus:outline-none"
+              className="inline-flex items-center justify-center p-2 rounded-md text-white hover:bg-blue-500 focus:outline-none"
             >
               <span className="sr-only">Open main menu</span>
               <svg
@@ -224,7 +257,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
                 viewBox="0 0 24 24"
                 stroke="currentColor"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
               <svg
                 className={`${isOpen ? 'block' : 'hidden'} h-6 w-6`}
@@ -233,36 +266,40 @@ export default function Navigation({ onLogout }: NavigationProps) {
                 viewBox="0 0 24 24"
                 stroke="currentColor"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         </div>
       </div>
+
       {/* Mobile menu */}
       <div className={`${isOpen ? 'block' : 'hidden'} md:hidden`}>
-        <div className="px-2 pt-2 pb-3 space-y-1">
+        <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
           <Link
-            href="/home"
+            href="/dashboard"
             className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname === '/home' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+              pathname === '/dashboard' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
             }`}
+            onClick={() => setIsOpen(false)}
           >
             Dashboard
           </Link>
           <Link
-            href="/competition/manage"
+            href="/games"
             className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+              pathname === '/games' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
             }`}
+            onClick={() => setIsOpen(false)}
           >
-            Competitions
+            Games
           </Link>
           <Link
             href="/bowlers"
             className={`block px-3 py-2 rounded-md text-base font-medium ${
               pathname === '/bowlers' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
             }`}
+            onClick={() => setIsOpen(false)}
           >
             Bowlers
           </Link>
@@ -272,24 +309,63 @@ export default function Navigation({ onLogout }: NavigationProps) {
               className={`block px-3 py-2 rounded-md text-base font-medium ${
                 pathname === '/club/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
               }`}
+              onClick={() => setIsOpen(false)}
             >
               Manage Clubs
             </Link>
           )}
         </div>
         <div className="pt-4 pb-3 border-t border-blue-700">
-          <div className="px-2 space-y-1">
+          {/* Current Club (Mobile) */}
+          {currentClub && (
+            <div className="px-2 py-2">
+              <p className="text-xs text-blue-300">Current Club</p>
+              <div className="mt-1 flex items-center justify-between">
+                <p className="text-white font-medium">{currentClub.name}</p>
+                <button
+                  onClick={() => setClubDropdownOpen(!clubDropdownOpen)}
+                  className="px-2 py-1 text-sm bg-blue-700 rounded"
+                >
+                  Change
+                </button>
+              </div>
+              {clubDropdownOpen && (
+                <div className="mt-2 space-y-1">
+                  {userClubs.map((club) => (
+                    <button
+                      key={club.id}
+                      onClick={() => handleClubChange(club)}
+                      className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium ${
+                        currentClub.id === club.id
+                          ? 'bg-blue-700 text-white'
+                          : 'text-white hover:bg-blue-500'
+                      }`}
+                    >
+                      {club.name}
+                      {club.is_admin && (
+                        <span className="ml-2 text-xs">(Admin)</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* User Actions (Mobile) */}
+          <div className="mt-3 px-2 space-y-1">
             <Link
               href="/profile"
               className="block px-3 py-2 rounded-md text-base font-medium text-white hover:bg-blue-500"
+              onClick={() => setIsOpen(false)}
             >
-              Profile
+              Your Profile
             </Link>
             <button
               onClick={handleLogout}
               className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-white hover:bg-blue-500"
             >
-              Logout
+              Sign out
             </button>
           </div>
         </div>
@@ -297,3 +373,13 @@ export default function Navigation({ onLogout }: NavigationProps) {
     </nav>
   );
 }
+EOF
+
+# Copy the temporary file to the container
+docker cp navigation_temp.tsx bowlsman-frontend-1:/app/app/components/Navigation.tsx
+
+# Remove the temporary file
+rm navigation_temp.tsx
+
+# Restart the frontend container
+docker restart bowlsman-frontend-1 

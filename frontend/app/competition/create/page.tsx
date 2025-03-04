@@ -11,6 +11,11 @@ interface User {
   is_staff: boolean;
 }
 
+interface Club {
+  id: number;
+  name: string;
+}
+
 export default function CreateCompetition() {
   const [numPlayers, setNumPlayers] = useState<number>(4);
   const [name, setName] = useState<string>('');
@@ -18,31 +23,52 @@ export default function CreateCompetition() {
   const [maxRounds, setMaxRounds] = useState<number>(5);
   const [error, setError] = useState<string>('');
   const [user, setUser] = useState<User | null>(null);
+  const [currentClub, setCurrentClub] = useState<Club | null>(null);
+  const [userClubs, setUserClubs] = useState<Club[]>([]);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    
     const token = localStorage.getItem('token');
     if (!token) {
       router.push('/');
       return;
     }
 
-    const fetchUser = async () => {
+    const fetchUserData = async () => {
       try {
-        const response = await api.get<User>('/users/me/', {
-          headers: { 
-            Authorization: `Token ${token}`
-          }
-        });
+        const response = await api.get<User & { clubs: Club[] }>('/users/me/');
         setUser(response.data);
+        
+        // Get user's current club from localStorage
+        const storedCurrentClub = localStorage.getItem('currentClub');
+        if (storedCurrentClub) {
+          setCurrentClub(JSON.parse(storedCurrentClub) as Club);
+        }
+        
+        // Get user's clubs
+        const userClubsData = response.data.clubs || [];
+        setUserClubs(userClubsData);
+        
+        // If no current club but user has clubs, set the first one as current
+        if (!storedCurrentClub && userClubsData.length > 0) {
+          setCurrentClub(userClubsData[0]);
+        }
       } catch (error) {
+        console.error('Error fetching user data:', error);
         localStorage.removeItem('token');
         router.push('/');
       }
     };
 
-    fetchUser();
-  }, []);
+    fetchUserData();
+  }, [mounted]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,6 +81,11 @@ export default function CreateCompetition() {
       setError('Competition name is required');
       return;
     }
+    
+    if (!currentClub) {
+      setError('You must be a member of a club to create a competition');
+      return;
+    }
 
     try {
       await api.post('/competitions/', {
@@ -62,13 +93,24 @@ export default function CreateCompetition() {
         num_players: numPlayers,
         rule_set_id: 1,  // Default rule set, you can modify this later
         parallel_matches: parallelMatches,
-        max_rounds: maxRounds
+        max_rounds: maxRounds,
+        club: currentClub.id
       });
       router.push('/competition/manage');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating competition:', error);
-      setError('Failed to create competition');
+      if (error.response?.data?.error) {
+        setError(error.response.data.error);
+      } else {
+        setError('Failed to create competition');
+      }
     }
+  };
+
+  // Add a handleLogout function for the Navigation component
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    router.push('/');
   };
 
   if (!user) {
@@ -77,7 +119,7 @@ export default function CreateCompetition() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Navigation isStaff={user.is_staff} />
+      <Navigation onLogout={handleLogout} />
       
       <div className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md mx-auto">
@@ -98,6 +140,42 @@ export default function CreateCompetition() {
                   required
                 />
               </div>
+
+              {userClubs.length > 1 && (
+                <div className="mb-4">
+                  <label htmlFor="club" className="block text-sm font-medium text-gray-700 mb-2">
+                    Club
+                  </label>
+                  <select
+                    id="club"
+                    value={currentClub?.id || ''}
+                    onChange={(e) => {
+                      const selectedClub = userClubs.find(club => club.id === parseInt(e.target.value));
+                      setCurrentClub(selectedClub || null);
+                    }}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    required
+                  >
+                    <option value="">Select a club</option>
+                    {userClubs.map(club => (
+                      <option key={club.id} value={club.id}>
+                        {club.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {userClubs.length === 1 && currentClub && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Club
+                  </label>
+                  <div className="mt-1 p-2 bg-gray-100 rounded-md text-gray-700">
+                    {currentClub.name}
+                  </div>
+                </div>
+              )}
 
               <div className="mb-4">
                 <label htmlFor="numPlayers" className="block text-sm font-medium text-gray-700 mb-2">
