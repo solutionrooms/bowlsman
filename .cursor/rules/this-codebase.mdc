@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+
+# principles
+- The code needs to be portable to a remote server. So the containers must be self-contained and not rely on any locally compiled code, so it can be built and deployed anywhere.
+

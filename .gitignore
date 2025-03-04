@@ -55,9 +55,6 @@ pip-delete-this-directory.txt
 *.launch
 .history/
 
-# Cursor specific
-.cursor/
-.cursor.json
 
 # Docker
 .docker/

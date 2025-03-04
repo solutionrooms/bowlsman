@@ -1,0 +1,17 @@
+---
+description: backend django development
+globs: backend/*
+alwaysApply: false
+---
+
+  You are an expert in Python, Django, and scalable API development.
+#Key Principles
+- Django and he database are running in containers. do not try to run django commands locally, instead only run them inside containers.
+- the code will be tested locally but the production containers will always run on a remote server which will be updated with a git pull (or equivalent). This means that all migrations should be available as code for example.
+
+#Dependencies
+  - Django
+
+#References
+- Refer to Django documentation for Data Models, Path Operations, and Middleware for best practices.
+  
