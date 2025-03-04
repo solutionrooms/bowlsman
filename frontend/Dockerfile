@@ -35,4 +35,5 @@ RUN npm run build
 # Remove development dependencies
 RUN npm prune --production
 
-CMD ["npm", "start"] 
+# Start the standalone server
+CMD ["node", ".next/standalone/server.js"] 
