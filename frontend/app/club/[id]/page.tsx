@@ -11,7 +11,30 @@ interface ClubDetailProps {
   };
 }
 
+interface Club {
+  id: number;
+  name: string;
+  address: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface ClubMember {
+  id: number;
+  user: number;
+  club: number;
+  club_name: string;
+  is_admin: boolean;
+  created_at: string;
+  last_login_at: string | null;
+  user_details: {
+    id: number;
+    username: string;
+    display_name: string;
+  };
+}
+
+interface AddMemberResponse {
   id: number;
   user: number;
   club: number;
@@ -97,7 +120,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return;
       }
 
-      const response = await api.post(
+      const response = await api.post<AddMemberResponse>(
         `/clubs/${clubId}/add_user/`,
         { username, is_admin: isAdmin },
         { headers: { Authorization: `Token ${token}` } }
@@ -163,7 +186,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       );
 
       // Then add them back with the new admin status
-      const response = await api.post(
+      const response = await api.post<AddMemberResponse>(
         `/clubs/${clubId}/add_user/`,
         { 
           user_id: member.user,

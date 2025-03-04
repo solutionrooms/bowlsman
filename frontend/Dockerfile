@@ -1,24 +1,38 @@
 FROM node:20-alpine
 
+# Add a non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
+
 WORKDIR /app
 
-# Copy package files for dependency installation
-COPY package*.json ./
+# Copy package files
+COPY --chown=nextjs:nodejs package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies with correct permissions
+RUN npm install && \
+    chown -R nextjs:nodejs /app
 
-# Source code will be mounted from the host - we copy it for linting purposes
-# if manually building without volume mounts
-COPY . .
+# Copy source with correct permissions
+COPY --chown=nextjs:nodejs . .
 
-# Run ESLint to catch syntax errors early
-RUN npm run lint -- --max-warnings=0 || (echo "ESLint found errors, please fix them before building" && exit 1)
-
-# Set development environment to handle syntax errors more gracefully
-ENV NODE_ENV=development
+# Switch to non-root user
+USER nextjs
 
 EXPOSE 3000
 
-# Add linting check before starting the development server
-CMD ["sh", "-c", "npm run lint || (echo 'Warning: ESLint found issues. You should fix them.') && npm run dev"] 
+# Use production environment
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Add build-time environment variables
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+# Build the application
+RUN npm run build
+
+# Remove development dependencies
+RUN npm prune --production
+
+CMD ["npm", "start"] 

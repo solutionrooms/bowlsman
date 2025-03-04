@@ -80,9 +80,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
       localStorage.setItem('currentClub', JSON.stringify(club));
       setCurrentClub(club);
       setClubDropdownOpen(false);
-      
-      // Refresh the page to update content for the new club
-      window.location.reload();
+      setMessage(null); // Clear any previous error messages
     } catch (error) {
       console.error('Error changing club:', error);
       setMessage('Failed to change club. Please try again.');
@@ -169,9 +167,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
                           <button
                             key={club.id}
                             onClick={() => handleClubChange(club)}
-                            className={`block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${
-                              currentClub.id === club.id ? 'bg-gray-50' : ''
-                            }`}
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                           >
                             {club.name}
                           </button>
@@ -181,116 +177,40 @@ export default function Navigation({ onLogout }: NavigationProps) {
                   )}
                 </div>
               )}
-              {/* User Menu */}
-              <div className="ml-3 relative">
+              {/* Profile dropdown */}
+              <div className="relative">
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="px-3 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
+                  className="flex items-center px-3 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
                 >
-                  {user?.username || 'Menu'}
+                  {user?.username}
+                  <svg
+                    className="ml-1 h-4 w-4"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
                 </button>
                 {dropdownOpen && (
                   <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                     <div className="py-1">
-                      <Link
-                        href="/profile"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      >
-                        Profile
-                      </Link>
                       <button
                         onClick={handleLogout}
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       >
-                        Logout
+                        Sign out
                       </button>
                     </div>
                   </div>
                 )}
               </div>
             </div>
-          </div>
-          {/* Mobile menu button */}
-          <div className="md:hidden">
-            <button
-              onClick={() => setIsOpen(!isOpen)}
-              className="inline-flex items-center justify-center p-2 rounded-md text-white hover:bg-blue-700 focus:outline-none"
-            >
-              <span className="sr-only">Open main menu</span>
-              <svg
-                className={`${isOpen ? 'hidden' : 'block'} h-6 w-6`}
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-              <svg
-                className={`${isOpen ? 'block' : 'hidden'} h-6 w-6`}
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-      {/* Mobile menu */}
-      <div className={`${isOpen ? 'block' : 'hidden'} md:hidden`}>
-        <div className="px-2 pt-2 pb-3 space-y-1">
-          <Link
-            href="/home"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname === '/home' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/competition/manage"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Competitions
-          </Link>
-          <Link
-            href="/bowlers"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname === '/bowlers' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Bowlers
-          </Link>
-          {user?.is_staff && (
-            <Link
-              href="/club/manage"
-              className={`block px-3 py-2 rounded-md text-base font-medium ${
-                pathname === '/club/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-              }`}
-            >
-              Manage Clubs
-            </Link>
-          )}
-        </div>
-        <div className="pt-4 pb-3 border-t border-blue-700">
-          <div className="px-2 space-y-1">
-            <Link
-              href="/profile"
-              className="block px-3 py-2 rounded-md text-base font-medium text-white hover:bg-blue-500"
-            >
-              Profile
-            </Link>
-            <button
-              onClick={handleLogout}
-              className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-white hover:bg-blue-500"
-            >
-              Logout
-            </button>
           </div>
         </div>
       </div>

@@ -172,7 +172,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         logger.info(f'Checking permissions for action: {self.action}')
-        if self.action in ['create', 'login', 'me']:
+        if self.action in ['create', 'login', 'me', 'register']:
             return [permissions.AllowAny()]
         return super().get_permissions()
 
@@ -299,6 +299,48 @@ class UserViewSet(viewsets.ModelViewSet):
             'clubs': [ClubSerializer(cu.club).data for cu in club_users],
             'current_club': current_club
         })
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def register(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        email = request.data.get('email')
+        
+        if not username or not password or not email:
+            return Response(
+                {'error': 'Username, password and email are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if username already exists
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {'error': 'Username already exists'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Check if email already exists
+        if User.objects.filter(email=email).exists():
+            return Response(
+                {'error': 'Email already exists'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create user
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password
+        )
+        
+        # Create token
+        token, created = Token.objects.get_or_create(user=user)
+        
+        return Response({
+            'token': token.key,
+            'user': UserSerializer(user).data,
+            'message': 'Registration successful'
+        }, status=status.HTTP_201_CREATED)
 
 class CompetitionViewSet(viewsets.ModelViewSet):
     serializer_class = CompetitionSerializer

@@ -149,9 +149,24 @@ export default function CreateCompetition() {
                   <select
                     id="club"
                     value={currentClub?.id || ''}
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const selectedClub = userClubs.find(club => club.id === parseInt(e.target.value));
-                      setCurrentClub(selectedClub || null);
+                      if (selectedClub) {
+                        try {
+                          const token = localStorage.getItem('token');
+                          await api.put<{message: string, club: Club}>(
+                            'club-users/set-current-club/',
+                            { club_id: selectedClub.id },
+                            { headers: { Authorization: `Token ${token}` } }
+                          );
+                          
+                          setCurrentClub(selectedClub);
+                          localStorage.setItem('currentClub', JSON.stringify(selectedClub));
+                        } catch (error) {
+                          console.error('Error changing club:', error);
+                          setError('Failed to change club. Please try again.');
+                        }
+                      }
                     }}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                     required

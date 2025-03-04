@@ -97,19 +97,18 @@ export default function Home() {
     try {
       if (isLogin) {
         // Login
-        const response = await api.post<LoginResponse>('/login/', {
+        const response = await api.post<LoginResponse>('/users/login/', {
           username,
           password
         });
 
         if (response.data.token) {
           if (mounted) {
-            localStorage.setItem('token', response.data.token); // Save token for club selection
+            localStorage.setItem('token', response.data.token);
           }
           
           if (response.data.current_club) {
             if (mounted) {
-              localStorage.setItem('token', response.data.token);
               localStorage.setItem('currentClub', JSON.stringify(response.data.current_club));
             }
             router.push('/home');

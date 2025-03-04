@@ -515,16 +515,28 @@ export default function ManageCompetitions() {
                         const clubId = e.target.value;
                         const selected = userClubs.find(c => c.id === parseInt(clubId));
                         if (selected) {
-                          // Update locally
-                          setCurrentClub(selected);
-                          localStorage.setItem('currentClub', JSON.stringify(selected));
-                          
-                          // Update on the backend
                           try {
-                            await api.put('/club-users/set-current-club/', { club_id: selected.id });
+                            const token = localStorage.getItem('token');
+                            await api.put('/club-users/set-current-club/', 
+                              { club_id: selected.id },
+                              { headers: { Authorization: `Token ${token}` } }
+                            );
+                            
+                            // Update locally
+                            setCurrentClub(selected);
+                            localStorage.setItem('currentClub', JSON.stringify(selected));
+                            
+                            // Fetch competitions and users for the new club
+                            const params = { club_id: selected.id };
+                            const [competitionsResponse, usersResponse] = await Promise.all([
+                              api.get<Competition[]>('/competitions/', { params }),
+                              api.get<User[]>('/users/', { params })
+                            ]);
+                            
+                            setCompetitions(competitionsResponse.data);
+                            setAllUsers(usersResponse.data);
                           } catch (error) {
-                            console.error('Error updating current club on backend:', error);
-                            // Continue anyway, as we've updated it locally
+                            console.error('Error updating current club:', error);
                           }
                         }
                       }}

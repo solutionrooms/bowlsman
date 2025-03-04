@@ -91,8 +91,6 @@ export default function Profile() {
       if (selectedClub) {
         localStorage.setItem('currentClub', JSON.stringify(selectedClub));
         setCurrentClub(selectedClub);
-        // Refresh the page to update content for the new club
-        window.location.reload();
       }
     } catch (error) {
       console.error('Error changing club:', error);
