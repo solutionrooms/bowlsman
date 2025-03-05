@@ -17,5 +17,5 @@ urlpatterns = [
     path('competitions/<int:competition_id>/create_schedule/', views.create_schedule),
     path('clubs/<int:club_id>/add_user/', views.ClubViewSet.as_view({'post': 'add_user'})),
     path('clubs/<int:club_id>/remove_user/', views.ClubViewSet.as_view({'post': 'remove_user'})),
-    path('club-users/set-current-club/', views.ClubUserViewSet.as_view({'put': 'set_current_club'})),
+    path('club-users/set_current_club/', views.ClubUserViewSet.as_view({'put': 'set_current_club'})),
 ] 

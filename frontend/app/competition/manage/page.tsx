@@ -243,7 +243,7 @@ export default function ManageCompetitions() {
     }
 
     try {
-      const response = await api.put<Competition>(`/competitions/${editingCompetition.id}/`, {
+      const response = await api.put<Competition>(`competitions/${editingCompetition.id}/`, {
         name: editingCompetition.name,
         num_players: editingCompetition.num_players,
         rule_set_id: editingCompetition.rule_set_id,
@@ -517,7 +517,10 @@ export default function ManageCompetitions() {
                         if (selected) {
                           try {
                             const token = localStorage.getItem('token');
-                            await api.put('/club-users/set-current-club/', 
+                            const endpoint = 'club-users/set_current_club/';
+                            
+                            await api.put(
+                              endpoint,
                               { club_id: selected.id },
                               { headers: { Authorization: `Token ${token}` } }
                             );

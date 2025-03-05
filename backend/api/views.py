@@ -80,39 +80,6 @@ class LoginView(APIView):
             'current_club': current_club_data
         })
 
-class SetCurrentClubView(APIView):
-    permission_classes = [IsAuthenticated]
-    
-    def post(self, request):
-        club_id = request.data.get('club_id')
-        
-        if not club_id:
-            return Response({'error': 'Club ID is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            # Check if user belongs to this club
-            club_user = ClubUser.objects.get(user=request.user, club_id=club_id)
-            
-            # Update last login time
-            club_user.last_login_at = timezone.now()
-            club_user.save()
-            
-            # Get club data
-            club = club_user.club
-            club_data = {
-                'id': club.id,
-                'name': club.name,
-                'address': club.address
-            }
-            
-            return Response({
-                'message': 'Current club updated successfully',
-                'club': club_data
-            })
-            
-        except ClubUser.DoesNotExist:
-            return Response({'error': 'User does not belong to the specified club'}, status=status.HTTP_403_FORBIDDEN)
-
 class ClubListView(APIView):
     permission_classes = [IsAuthenticated]
     

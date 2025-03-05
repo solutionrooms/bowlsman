@@ -151,7 +151,7 @@ export default function Home() {
     try {
       const token = localStorage.getItem('token');
       const response = await api.put<{message: string, club: Club}>(
-        'club-users/set-current-club/',
+        'club-users/set_current_club/',
         { club_id: selectedClubId },
         { headers: { Authorization: `Token ${token}` } }
       );

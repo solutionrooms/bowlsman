@@ -49,16 +49,34 @@ interface AddMemberResponse {
   };
 }
 
+interface User {
+  id: number;
+  username: string;
+  display_name: string;
+  search_name: string;
+  is_staff?: boolean;
+}
+
+interface UserResponse {
+  user: User;
+  current_club: any;
+}
+
 export default function ClubDetail({ params }: ClubDetailProps) {
   const [club, setClub] = useState<Club | null>(null);
   const [members, setMembers] = useState<ClubMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [username, setUsername] = useState('');
+  const [newPlayerName, setNewPlayerName] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
   const [addMemberError, setAddMemberError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [showManageModal, setShowManageModal] = useState(false);
   const router = useRouter();
   const clubId = parseInt(params.id);
 
@@ -77,19 +95,78 @@ export default function ClubDetail({ params }: ClubDetailProps) {
           return;
         }
 
+        // Get current user to check if they are admin
+        const userResponse = await api.get<UserResponse>('/users/me/', {
+          headers: { Authorization: `Token ${token}` }
+        });
+        
+        const isUserStaff = userResponse.data.user.is_staff;
+        console.log('Current user:', userResponse.data.user);
+        console.log('Is user staff:', isUserStaff);
+        console.log('Club ID being requested:', clubId);
+
         // Fetch club details
         const clubResponse = await api.get<Club>(`/clubs/${clubId}/`, {
           headers: { Authorization: `Token ${token}` }
         });
         
+        console.log('Club details:', clubResponse.data);
         setClub(clubResponse.data);
         
-        // Fetch club members
+        // Fetch club members first - this will give us the definitive list of users in this club
         const membersResponse = await api.get<ClubMember[]>(`/club-users/?club=${clubId}`, {
           headers: { Authorization: `Token ${token}` }
         });
         
-        setMembers(membersResponse.data);
+        console.log('Club members (raw):', membersResponse.data);
+        
+        // Filter out duplicate members (same user ID)
+        const uniqueMembers = membersResponse.data.reduce((acc: ClubMember[], current) => {
+          const isDuplicate = acc.find(item => item.user === current.user);
+          if (!isDuplicate) {
+            return [...acc, current];
+          }
+          return acc;
+        }, []);
+        
+        console.log('Club members (unique):', uniqueMembers);
+        setMembers(uniqueMembers);
+        
+        // Get the list of unique user IDs who are members of this club
+        const clubMemberUserIds = uniqueMembers.map(member => member.user);
+        console.log('Club member user IDs (unique):', clubMemberUserIds);
+        
+        // For staff users, we need to make sure we're only showing users from this specific club
+        if (isUserStaff) {
+          console.log('User is staff, fetching all users and filtering client-side');
+          // Fetch all users
+          const allUsersResponse = await api.get<User[]>('/users/', {
+            headers: { Authorization: `Token ${token}` }
+          });
+          
+          console.log('All users (total):', allUsersResponse.data.length);
+          
+          // Filter to only include users who are members of this club
+          const filteredUsers = allUsersResponse.data.filter(user => 
+            clubMemberUserIds.includes(user.id)
+          );
+          
+          console.log('Filtered users (unique club members):', filteredUsers.length);
+          console.log('Filtered user IDs:', filteredUsers.map(u => u.id));
+          setAllUsers(filteredUsers);
+        } else {
+          // For regular users, use the backend filtering
+          console.log('User is not staff, using backend filtering');
+          const usersResponse = await api.get<User[]>('/users/', {
+            headers: { Authorization: `Token ${token}` },
+            params: { club_id: clubId }
+          });
+          
+          console.log('Users fetched with club_id filter:', usersResponse.data.length);
+          console.log('User IDs from backend filter:', usersResponse.data.map(u => u.id));
+          setAllUsers(usersResponse.data);
+        }
+        
         setLoading(false);
       } catch (error) {
         console.error('Error fetching club details:', error);
@@ -101,6 +178,30 @@ export default function ClubDetail({ params }: ClubDetailProps) {
     fetchClubDetails();
   }, [clubId, router, mounted]);
 
+  useEffect(() => {
+    if (newPlayerName.trim() === '') {
+      setFilteredUsers([]);
+      setShowUserDropdown(false);
+      return;
+    }
+
+    // Get IDs of users already in the club (using the unique members)
+    const existingUserIds = members.map(m => m.user);
+    console.log('Existing user IDs for dropdown filter:', existingUserIds);
+    
+    // Filter users by name and exclude those already in the club
+    const searchTermLower = newPlayerName.toLowerCase();
+    const filtered = allUsers.filter(u => 
+      (u.display_name.toLowerCase().includes(searchTermLower) || 
+       u.username.toLowerCase().includes(searchTermLower)) && 
+      !existingUserIds.includes(u.id)
+    );
+    
+    console.log('Filtered users for dropdown:', filtered.length);
+    setFilteredUsers(filtered);
+    setShowUserDropdown(true);
+  }, [newPlayerName, allUsers, members]);
+
   const handleLogout = () => {
     if (mounted) {
       localStorage.removeItem('token');
@@ -108,8 +209,51 @@ export default function ClubDetail({ params }: ClubDetailProps) {
     }
   };
 
-  const handleAddMember = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSelectUser = (user: User) => {
+    setSelectedUser(user);
+    setNewPlayerName(user.display_name);
+    setShowUserDropdown(false);
+    
+    // Immediately try to add the selected user
+    handleAddMember(null, user);
+  };
+
+  const refreshMembers = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        router.push('/');
+        return;
+      }
+      
+      // Fetch club members
+      const membersResponse = await api.get<ClubMember[]>(`/club-users/?club=${clubId}`, {
+        headers: { Authorization: `Token ${token}` }
+      });
+      
+      // Filter out duplicate members
+      const uniqueMembers = membersResponse.data.reduce((acc: ClubMember[], current) => {
+        const isDuplicate = acc.find(item => item.user === current.user);
+        if (!isDuplicate) {
+          return [...acc, current];
+        }
+        return acc;
+      }, []);
+      
+      console.log('Refreshed club members (unique):', uniqueMembers.length);
+      setMembers(uniqueMembers);
+      
+      return uniqueMembers;
+    } catch (error) {
+      console.error('Error refreshing members:', error);
+      return null;
+    }
+  };
+
+  const handleAddMember = async (e: FormEvent | null, selectedUser?: User) => {
+    if (e) e.preventDefault();
+    if (!selectedUser && !newPlayerName.trim()) return;
+
     setAddingMember(true);
     setAddMemberError(null);
 
@@ -120,18 +264,24 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return;
       }
 
-      const response = await api.post<AddMemberResponse>(
+      console.log('Adding member:', selectedUser ? selectedUser : newPlayerName);
+      
+      await api.post<AddMemberResponse>(
         `/clubs/${clubId}/add_user/`,
-        { username, is_admin: isAdmin },
+        { 
+          username: selectedUser ? selectedUser.username : newPlayerName,
+          is_admin: isAdmin 
+        },
         { headers: { Authorization: `Token ${token}` } }
       );
 
-      // Add the new member to the list
-      setMembers([...members, response.data]);
+      // Refresh the member list to ensure we have the latest data
+      await refreshMembers();
       
       // Reset form
-      setUsername('');
+      setNewPlayerName('');
       setIsAdmin(false);
+      setSelectedUser(null);
     } catch (error: any) {
       console.error('Error adding member:', error);
       if (error.response?.data?.error) {
@@ -156,14 +306,16 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return;
       }
 
+      console.log('Removing member with user ID:', userId);
+      
       await api.post(
         `/clubs/${clubId}/remove_user/`,
         { user_id: userId },
         { headers: { Authorization: `Token ${token}` } }
       );
 
-      // Remove the member from the list
-      setMembers(members.filter(member => member.user !== userId));
+      // Refresh the member list to ensure we have the latest data
+      await refreshMembers();
     } catch (error: any) {
       console.error('Error removing member:', error);
       alert(error.response?.data?.error || 'Failed to remove member. Please try again.');
@@ -178,6 +330,8 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return;
       }
 
+      console.log('Toggling admin status for member:', member);
+      
       // First remove the user
       await api.post(
         `/clubs/${clubId}/remove_user/`,
@@ -186,7 +340,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       );
 
       // Then add them back with the new admin status
-      const response = await api.post<AddMemberResponse>(
+      await api.post<AddMemberResponse>(
         `/clubs/${clubId}/add_user/`,
         { 
           user_id: member.user,
@@ -195,13 +349,11 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         { headers: { Authorization: `Token ${token}` } }
       );
 
-      // Update the member in the list
-      setMembers(members.map(m => 
-        m.id === member.id ? response.data : m
-      ));
+      // Refresh the member list to ensure we have the latest data
+      await refreshMembers();
     } catch (error: any) {
       console.error('Error toggling admin status:', error);
-      alert(error.response?.data?.error || 'Failed to update member. Please try again.');
+      alert(error.response?.data?.error || 'Failed to update admin status. Please try again.');
     }
   };
 
@@ -248,127 +400,167 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         <div className="bg-white shadow rounded-lg p-6 mb-8">
           <h1 className="text-2xl font-bold mb-2">{club.name}</h1>
           {club.address && <p className="text-gray-600 mb-4">{club.address}</p>}
-          <p className="text-sm text-gray-500">
-            {members.length} {members.length === 1 ? 'member' : 'members'}
-          </p>
-        </div>
-
-        <div className="bg-white shadow rounded-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4">Add Member</h2>
           
-          {addMemberError && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
-              <span className="block sm:inline">{addMemberError}</span>
-            </div>
-          )}
-          
-          <form onSubmit={handleAddMember} className="space-y-4">
-            <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
-                Username
-              </label>
-              <input
-                type="text"
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-            
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="isAdmin"
-                checked={isAdmin}
-                onChange={(e) => setIsAdmin(e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <label htmlFor="isAdmin" className="ml-2 block text-sm text-gray-700">
-                Make this user an admin
-              </label>
-            </div>
-            
+          <div className="mt-8 flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Members ({members.length})</h2>
             <button
-              type="submit"
-              disabled={addingMember}
-              className={`px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition ${
-                addingMember ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
+              onClick={() => setShowManageModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
             >
-              {addingMember ? 'Adding...' : 'Add Member'}
+              Manage Members
             </button>
-          </form>
-        </div>
-
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Members</h2>
+          </div>
           
-          {members.length === 0 ? (
-            <p className="text-gray-500">No members found.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Role
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Login
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {members.map(member => (
-                    <tr key={member.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {member.user_details.display_name}
+          <div className="mt-4 space-y-4">
+            {members.map(member => (
+              <div key={member.id} className="flex items-center justify-between bg-white p-4 rounded-lg border">
+                <div>
+                  <span className="font-medium">{member.user_details.display_name}</span>
+                  {member.is_admin && (
+                    <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                      Admin
+                    </span>
+                  )}
+                </div>
+                <div className="space-x-2">
+                  <button
+                    onClick={() => handleToggleAdmin(member)}
+                    className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition"
+                  >
+                    {member.is_admin ? 'Remove Admin' : 'Make Admin'}
+                  </button>
+                  <button
+                    onClick={() => handleRemoveMember(member.user)}
+                    className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+            {members.length === 0 && (
+              <p className="text-gray-500 text-center py-4">No members yet</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Manage Members Modal */}
+      {showManageModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold">Manage Members - {club?.name || ''}</h2>
+              <button 
+                onClick={() => setShowManageModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold mb-4">Add Member</h3>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={newPlayerName}
+                  onChange={(e) => {
+                    setNewPlayerName(e.target.value);
+                    setSelectedUser(null);
+                  }}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  placeholder="Search for a player or enter guest name"
+                  autoFocus
+                />
+                {showUserDropdown && (
+                  <div className="absolute z-10 w-full mt-1 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">
+                    {filteredUsers.length > 0 ? (
+                      filteredUsers.map(user => (
+                        <div
+                          key={user.id}
+                          className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                          onClick={() => handleSelectUser(user)}
+                        >
+                          {user.display_name}
                         </div>
-                        <div className="text-sm text-gray-500">
-                          @{member.user_details.username}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          member.is_admin ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {member.is_admin ? 'Admin' : 'Member'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {member.last_login_at ? new Date(member.last_login_at).toLocaleString() : 'Never'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-gray-500">No matching users found</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex items-center mt-2">
+                <input
+                  type="checkbox"
+                  id="isAdmin"
+                  checked={isAdmin}
+                  onChange={(e) => setIsAdmin(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="isAdmin" className="ml-2 block text-sm text-gray-700">
+                  Make this user an admin
+                </label>
+              </div>
+              
+              {addMemberError && (
+                <div className="p-3 mt-2 bg-red-100 border border-red-400 text-red-700 rounded">
+                  {addMemberError}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Current Members</h3>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {members.length > 0 ? (
+                  members.map(member => (
+                    <div key={member.id} className="flex items-center justify-between bg-white p-3 rounded-lg border">
+                      <div>
+                        <span className="font-medium">{member.user_details.display_name}</span>
+                        {member.is_admin && (
+                          <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">
+                            Admin
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-x-2">
                         <button
                           onClick={() => handleToggleAdmin(member)}
-                          className="text-indigo-600 hover:text-indigo-900 mr-4"
+                          className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition"
                         >
                           {member.is_admin ? 'Remove Admin' : 'Make Admin'}
                         </button>
                         <button
                           onClick={() => handleRemoveMember(member.user)}
-                          className="text-red-600 hover:text-red-900"
+                          className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition"
                         >
                           Remove
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-center py-4">No members yet</p>
+                )}
+              </div>
             </div>
-          )}
+
+            <div className="mt-6 text-right">
+              <button
+                onClick={() => setShowManageModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition"
+              >
+                Done
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 } 

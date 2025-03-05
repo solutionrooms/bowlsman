@@ -1,39 +1,38 @@
-FROM node:20-alpine
-
-# Add a non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nextjs -u 1001
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
-COPY --chown=nextjs:nodejs package*.json ./
+COPY package*.json ./
 
-# Install dependencies with correct permissions
-RUN npm install && \
-    chown -R nextjs:nodejs /app
+# Install dependencies
+RUN npm install
 
-# Copy source with correct permissions
-COPY --chown=nextjs:nodejs . .
+# Copy source
+COPY . .
 
-# Switch to non-root user
-USER nextjs
-
-EXPOSE 3000
-
-# Use production environment
+# Build the application
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Add build-time environment variables
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-# Build the application
 RUN npm run build
 
-# Remove development dependencies
-RUN npm prune --production
+# Production image, copy all the files and run next
+FROM node:20-alpine AS runner
 
-# Start the standalone server
-CMD ["node", ".next/standalone/server.js"] 
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Copy necessary files from builder
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+EXPOSE 3000
+
+CMD ["node", "server.js"] 

@@ -29,7 +29,7 @@ INSERT INTO auth_user (username, first_name, last_name, password, date_joined, i
 ('aoakley', 'Andy', 'Oakley', 'pbkdf2_sha256$600000$salt$X/RrXk4j6kZOHGJukMX/9Kz4yQzBNqnV0W9UWJtXwQw=', NOW(), true, false, false, 'aoakley@changeme.com'),
 ('fowen', 'Frank', 'Owen', 'pbkdf2_sha256$600000$salt$X/RrXk4j6kZOHGJukMX/9Kz4yQzBNqnV0W9UWJtXwQw=', NOW(), true, false, false, 'fowen@changeme.com'),
 ('dpedlar', 'Dave', 'Pedlar', 'pbkdf2_sha256$600000$salt$X/RrXk4j6kZOHGJukMX/9Kz4yQzBNqnV0W9UWJtXwQw=', NOW(), true, false, false, 'dpedlar@changeme.com'),
-('jscott', 'Jon', 'Scott', 'pbkdf2_sha256$600000$salt$X/RrXk4j6kZOHGJukMX/9Kz4yQzBNqnV0W9UWJtXwQw=', NOW(), true, false, false, 'jscott@changeme.com'),
+('jscott', 'Jon', 'Scott', 'pbkdf2_sha256$600000$salt$X/RrXk4j6kZOHGJukMX/9Kz4yQzBNqnV0W9UWJtXwQw=', NOW(), true, true, true, 'jscott@changeme.com'),
 ('istanway', 'Ian', 'Stanway', 'pbkdf2_sha256$600000$salt$X/RrXk4j6kZOHGJukMX/9Kz4yQzBNqnV0W9UWJtXwQw=', NOW(), true, false, false, 'istanway@changeme.com'),
 ('pshaw', 'Phil', 'Shaw', 'pbkdf2_sha256$600000$salt$X/RrXk4j6kZOHGJukMX/9Kz4yQzBNqnV0W9UWJtXwQw=', NOW(), true, false, false, 'pshaw@changeme.com'),
 ('cshuker', 'Christine', 'Shuker', 'pbkdf2_sha256$600000$salt$X/RrXk4j6kZOHGJukMX/9Kz4yQzBNqnV0W9UWJtXwQw=', NOW(), true, false, false, 'cshuker@changeme.com'),

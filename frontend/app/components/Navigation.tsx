@@ -31,6 +31,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
   const [clubDropdownOpen, setClubDropdownOpen] = useState(false);
   const [currentClub, setCurrentClub] = useState<Club | null>(null);
   const [userClubs, setUserClubs] = useState<Club[]>([]);
+  const [allClubs, setAllClubs] = useState<Club[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -47,6 +48,14 @@ export default function Navigation({ onLogout }: NavigationProps) {
         
         if (response.data.user.clubs) {
           setUserClubs(response.data.user.clubs);
+        }
+
+        // If user is staff, fetch all clubs
+        if (response.data.user.is_staff) {
+          const clubsResponse = await api.get<Club[]>('/clubs/', {
+            headers: { Authorization: `Token ${token}` }
+          });
+          setAllClubs(clubsResponse.data);
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
@@ -68,17 +77,19 @@ export default function Navigation({ onLogout }: NavigationProps) {
     onLogout();
   };
 
-  const handleClubChange = async (club: Club) => {
+  const handleClubChange = async (clubId: number) => {
     try {
       const token = localStorage.getItem('token');
+      const endpoint = 'club-users/set_current_club/';
+      
       const response = await api.put<{message: string, club: Club}>(
-        'club-users/set-current-club/',
-        { club_id: club.id },
+        endpoint,
+        { club_id: clubId },
         { headers: { Authorization: `Token ${token}` } }
       );
       
-      localStorage.setItem('currentClub', JSON.stringify(club));
-      setCurrentClub(club);
+      localStorage.setItem('currentClub', JSON.stringify(response.data.club));
+      setCurrentClub(response.data.club);
       setClubDropdownOpen(false);
       setMessage(null); // Clear any previous error messages
     } catch (error) {
@@ -133,6 +144,16 @@ export default function Navigation({ onLogout }: NavigationProps) {
                     Manage Clubs
                   </Link>
                 )}
+                {!user?.is_staff && userClubs.some(club => club.is_admin) && currentClub && (
+                  <Link
+                    href={`/club/${currentClub.id}`}
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      pathname === `/club/${currentClub.id}` ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                    }`}
+                  >
+                    Manage Club
+                  </Link>
+                )}
               </div>
             </div>
           </div>
@@ -163,15 +184,62 @@ export default function Navigation({ onLogout }: NavigationProps) {
                   {clubDropdownOpen && (
                     <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                       <div className="py-1">
-                        {userClubs.map((club) => (
-                          <button
-                            key={club.id}
-                            onClick={() => handleClubChange(club)}
-                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            {club.name}
-                          </button>
-                        ))}
+                        {user?.is_staff ? (
+                          <>
+                            {userClubs.length > 0 && (
+                              <>
+                                <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                  My Clubs
+                                </div>
+                                {userClubs.map((club) => (
+                                  <button
+                                    key={club.id}
+                                    onClick={() => handleClubChange(club.id)}
+                                    className={`block w-full text-left px-4 py-2 text-sm ${
+                                      currentClub?.id === club.id ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    {club.name}
+                                    {club.is_admin && (
+                                      <span className="ml-2 text-xs text-blue-600">(Admin)</span>
+                                    )}
+                                  </button>
+                                ))}
+                                <div className="border-t border-gray-200 my-1"></div>
+                              </>
+                            )}
+                            <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                              All Clubs
+                            </div>
+                            {allClubs
+                              .filter(club => !userClubs.some(uc => uc.id === club.id))
+                              .map((club) => (
+                                <button
+                                  key={club.id}
+                                  onClick={() => handleClubChange(club.id)}
+                                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                >
+                                  {club.name}
+                                </button>
+                              ))}
+                          </>
+                        ) : (
+                          // Regular users only see their clubs
+                          userClubs.map((club) => (
+                            <button
+                              key={club.id}
+                              onClick={() => handleClubChange(club.id)}
+                              className={`block w-full text-left px-4 py-2 text-sm ${
+                                currentClub?.id === club.id ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                              }`}
+                            >
+                              {club.name}
+                              {club.is_admin && (
+                                <span className="ml-2 text-xs text-blue-600">(Admin)</span>
+                              )}
+                            </button>
+                          ))
+                        )}
                       </div>
                     </div>
                   )}
@@ -212,6 +280,83 @@ export default function Navigation({ onLogout }: NavigationProps) {
               </div>
             </div>
           </div>
+          
+          {/* Mobile menu button */}
+          <div className="-mr-2 flex md:hidden">
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="inline-flex items-center justify-center p-2 rounded-md text-white hover:bg-blue-700 focus:outline-none"
+            >
+              <svg
+                className={`${isOpen ? 'hidden' : 'block'} h-6 w-6`}
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              <svg
+                className={`${isOpen ? 'block' : 'hidden'} h-6 w-6`}
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      {/* Mobile menu */}
+      <div className={`${isOpen ? 'block' : 'hidden'} md:hidden`}>
+        <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+          <Link
+            href="/home"
+            className={`block px-3 py-2 rounded-md text-base font-medium ${
+              pathname === '/home' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+            }`}
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/competition/manage"
+            className={`block px-3 py-2 rounded-md text-base font-medium ${
+              pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+            }`}
+          >
+            Competitions
+          </Link>
+          <Link
+            href="/bowlers"
+            className={`block px-3 py-2 rounded-md text-base font-medium ${
+              pathname === '/bowlers' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+            }`}
+          >
+            Bowlers
+          </Link>
+          {user?.is_staff && (
+            <Link
+              href="/club/manage"
+              className={`block px-3 py-2 rounded-md text-base font-medium ${
+                pathname === '/club/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+              }`}
+            >
+              Manage Clubs
+            </Link>
+          )}
+          {!user?.is_staff && userClubs.some(club => club.is_admin) && currentClub && (
+            <Link
+              href={`/club/${currentClub.id}`}
+              className={`block px-3 py-2 rounded-md text-base font-medium ${
+                pathname === `/club/${currentClub.id}` ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+              }`}
+            >
+              Manage Club
+            </Link>
+          )}
         </div>
       </div>
     </nav>

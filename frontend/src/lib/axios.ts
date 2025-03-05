@@ -94,7 +94,8 @@ instance.interceptors.request.use((config) => {
     method: config.method,
     url: config.url,
     baseURL: config.baseURL,
-    headers: config.headers
+    headers: config.headers,
+    data: config.data
   });
 
   const fullUrl = new URL(
@@ -106,5 +107,46 @@ instance.interceptors.request.use((config) => {
 
   return config;
 });
+
+// Add response interceptor for debugging
+instance.interceptors.response.use(
+  (response) => {
+    console.log("Response received:", {
+      status: response.status,
+      statusText: response.statusText,
+      data: response.data,
+      headers: response.headers,
+      config: {
+        method: response.config.method,
+        url: response.config.url,
+        baseURL: response.config.baseURL
+      }
+    });
+    return response;
+  },
+  (error) => {
+    console.error("Request error:", {
+      message: error.message,
+      response: error.response ? {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers
+      } : 'No response',
+      request: error.request ? {
+        responseURL: error.request.responseURL,
+        status: error.request.status,
+        statusText: error.request.statusText
+      } : 'No request',
+      config: error.config ? {
+        method: error.config.method,
+        url: error.config.url,
+        baseURL: error.config.baseURL,
+        data: error.config.data
+      } : 'No config'
+    });
+    return Promise.reject(error);
+  }
+);
 
 export default instance;

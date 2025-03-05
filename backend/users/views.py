@@ -148,21 +148,49 @@ class ClubUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        try:
-            club_user = ClubUser.objects.get(user=request.user, club_id=club_id)
-            club_user.last_login_at = timezone.now()
-            club_user.save()
-            
-            return Response({
-                'message': 'Current club updated',
-                'club': ClubSerializer(club_user.club).data
-            })
-            
-        except ClubUser.DoesNotExist:
-            return Response(
-                {'error': 'You are not a member of this club'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
+        # For staff users, allow switching to any club
+        if request.user.is_staff:
+            try:
+                club = Club.objects.get(id=club_id)
+                
+                # Check if user is already a member of this club
+                club_user, created = ClubUser.objects.get_or_create(
+                    user=request.user,
+                    club=club,
+                    defaults={'is_admin': False}
+                )
+                
+                # Update last login time
+                club_user.last_login_at = timezone.now()
+                club_user.save()
+                
+                return Response({
+                    'message': 'Current club updated',
+                    'club': ClubSerializer(club).data
+                })
+                
+            except Club.DoesNotExist:
+                return Response(
+                    {'error': 'Club not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            # Regular users can only switch to clubs they are members of
+            try:
+                club_user = ClubUser.objects.get(user=request.user, club_id=club_id)
+                club_user.last_login_at = timezone.now()
+                club_user.save()
+                
+                return Response({
+                    'message': 'Current club updated',
+                    'club': ClubSerializer(club_user.club).data
+                })
+                
+            except ClubUser.DoesNotExist:
+                return Response(
+                    {'error': 'You are not a member of this club'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -174,6 +202,9 @@ class UserViewSet(viewsets.ModelViewSet):
         logger.info(f'Checking permissions for action: {self.action}')
         if self.action in ['create', 'login', 'me', 'register']:
             return [permissions.AllowAny()]
+        elif self.action == 'list':
+            # Allow authenticated users to list users
+            return [permissions.IsAuthenticated()]
         return super().get_permissions()
 
     def get_queryset(self):
@@ -348,11 +379,20 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Users can only see competitions from clubs they are members of
-        user_clubs = ClubUser.objects.filter(user=self.request.user).values_list('club_id', flat=True)
-        queryset = Competition.objects.filter(club_id__in=user_clubs)
+        # Get the user's current club (most recently accessed)
+        current_club = ClubUser.objects.filter(
+            user=self.request.user
+        ).order_by('-last_login_at').first()
         
-        # Filter by club_id if specified in query params
+        # If a current club exists, filter competitions by that club
+        if current_club:
+            queryset = Competition.objects.filter(club=current_club.club)
+        else:
+            # Fallback: show competitions from all clubs the user is a member of
+            user_clubs = ClubUser.objects.filter(user=self.request.user).values_list('club_id', flat=True)
+            queryset = Competition.objects.filter(club_id__in=user_clubs)
+        
+        # Filter by club_id if specified in query params (overrides current club)
         club_id = self.request.query_params.get('club_id')
         if club_id and club_id.isdigit():
             queryset = queryset.filter(club=int(club_id))
