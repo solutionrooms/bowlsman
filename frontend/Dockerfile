@@ -8,16 +8,14 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy source
+# Create necessary directories and files
+RUN mkdir -p public .next && \
+    touch public/.gitkeep
+
+# Copy source files
 COPY . .
 
 # Build the application
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-
 RUN npm run build
 
 # Production image, copy all the files and run next
@@ -28,11 +26,19 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Copy necessary files from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
+# Create necessary directories
+RUN mkdir -p .next/static public
+
+# Copy standalone server and dependencies
+COPY --from=builder /app/.next/standalone .
+
+# Copy static files
 COPY --from=builder /app/.next/static ./.next/static
+
+# Copy public files (if they exist)
+COPY --from=builder /app/public .
 
 EXPOSE 3000
 
+# Start the application
 CMD ["node", "server.js"] 

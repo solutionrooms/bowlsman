@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import React, { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '../../components/Navigation';
 import api from '../../../src/lib/axios';
@@ -55,6 +55,8 @@ interface User {
   display_name: string;
   search_name: string;
   is_staff?: boolean;
+  first_name?: string;
+  last_name?: string;
 }
 
 interface UserResponse {
@@ -113,16 +115,18 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('Club details:', clubResponse.data);
         setClub(clubResponse.data);
         
-        // Fetch club members first - this will give us the definitive list of users in this club
+        // Fetch club members
         const membersResponse = await api.get<ClubMember[]>(`/club-users/?club=${clubId}`, {
           headers: { Authorization: `Token ${token}` }
         });
         
         console.log('Club members (raw):', membersResponse.data);
+        console.log('Raw member user IDs:', membersResponse.data.map(m => m.user));
         
         // Filter out duplicate members (same user ID)
-        const uniqueMembers = membersResponse.data.reduce((acc: ClubMember[], current) => {
+        const uniqueMembers = membersResponse.data.reduce((acc: ClubMember[], current: ClubMember) => {
           const isDuplicate = acc.find(item => item.user === current.user);
+          console.log('Checking member:', current.user, 'isDuplicate:', !!isDuplicate);
           if (!isDuplicate) {
             return [...acc, current];
           }
@@ -130,42 +134,25 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         }, []);
         
         console.log('Club members (unique):', uniqueMembers);
+        console.log('Unique member user IDs:', uniqueMembers.map(m => m.user));
         setMembers(uniqueMembers);
         
-        // Get the list of unique user IDs who are members of this club
-        const clubMemberUserIds = uniqueMembers.map(member => member.user);
-        console.log('Club member user IDs (unique):', clubMemberUserIds);
+        // Fetch all users that can be added to the club
+        const usersResponse = await api.get<User[]>('/users/', {
+          headers: { Authorization: `Token ${token}` },
+          params: { club_id: clubId }
+        });
         
-        // For staff users, we need to make sure we're only showing users from this specific club
-        if (isUserStaff) {
-          console.log('User is staff, fetching all users and filtering client-side');
-          // Fetch all users
-          const allUsersResponse = await api.get<User[]>('/users/', {
-            headers: { Authorization: `Token ${token}` }
-          });
-          
-          console.log('All users (total):', allUsersResponse.data.length);
-          
-          // Filter to only include users who are members of this club
-          const filteredUsers = allUsersResponse.data.filter(user => 
-            clubMemberUserIds.includes(user.id)
-          );
-          
-          console.log('Filtered users (unique club members):', filteredUsers.length);
-          console.log('Filtered user IDs:', filteredUsers.map(u => u.id));
-          setAllUsers(filteredUsers);
-        } else {
-          // For regular users, use the backend filtering
-          console.log('User is not staff, using backend filtering');
-          const usersResponse = await api.get<User[]>('/users/', {
-            headers: { Authorization: `Token ${token}` },
-            params: { club_id: clubId }
-          });
-          
-          console.log('Users fetched with club_id filter:', usersResponse.data.length);
-          console.log('User IDs from backend filter:', usersResponse.data.map(u => u.id));
-          setAllUsers(usersResponse.data);
-        }
+        console.log('All users fetched:', usersResponse.data);
+        console.log('All user IDs:', usersResponse.data.map(u => u.id));
+        
+        // Filter out users who are already members
+        const memberUserIds = new Set(uniqueMembers.map(m => m.user));
+        const availableUsers = usersResponse.data.filter(user => !memberUserIds.has(user.id));
+        
+        console.log('Available users after filtering:', availableUsers);
+        console.log('Available user IDs:', availableUsers.map(u => u.id));
+        setAllUsers(availableUsers);
         
         setLoading(false);
       } catch (error) {
@@ -185,19 +172,30 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       return;
     }
 
-    // Get IDs of users already in the club (using the unique members)
-    const existingUserIds = members.map(m => m.user);
-    console.log('Existing user IDs for dropdown filter:', existingUserIds);
+    // Get IDs of users already in the club
+    const existingUserIds = new Set(members.map((m: ClubMember) => m.user));
+    console.log('Existing user IDs for dropdown filter:', Array.from(existingUserIds));
+    console.log('All available users:', allUsers);
     
     // Filter users by name and exclude those already in the club
     const searchTermLower = newPlayerName.toLowerCase();
-    const filtered = allUsers.filter(u => 
-      (u.display_name.toLowerCase().includes(searchTermLower) || 
-       u.username.toLowerCase().includes(searchTermLower)) && 
-      !existingUserIds.includes(u.id)
-    );
+    const filtered = allUsers.filter((u: User) => {
+      // Check if user is not already a member
+      const isMember = existingUserIds.has(u.id);
+      console.log('Checking user:', u.username, 'isMember:', isMember);
+      if (isMember) {
+        return false;
+      }
+      
+      // Search by display name, username, first name, or last name
+      const searchString = `${u.display_name || ''} ${u.username || ''} ${u.first_name || ''} ${u.last_name || ''}`.toLowerCase();
+      const matches = searchString.includes(searchTermLower);
+      console.log('User search string:', searchString, 'matches:', matches);
+      return matches;
+    });
     
     console.log('Filtered users for dropdown:', filtered.length);
+    console.log('Filtered user details:', filtered);
     setFilteredUsers(filtered);
     setShowUserDropdown(true);
   }, [newPlayerName, allUsers, members]);
@@ -232,7 +230,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       });
       
       // Filter out duplicate members
-      const uniqueMembers = membersResponse.data.reduce((acc: ClubMember[], current) => {
+      const uniqueMembers = membersResponse.data.reduce((acc: ClubMember[], current: ClubMember) => {
         const isDuplicate = acc.find(item => item.user === current.user);
         if (!isDuplicate) {
           return [...acc, current];

@@ -208,16 +208,39 @@ class UserViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 
     def get_queryset(self):
+        logger.info(f'Getting users queryset. User: {self.request.user}, Action: {self.action}')
         queryset = User.objects.all().order_by('-is_active', 'username')
         
         # Filter by club_id if specified in query params
         club_id = self.request.query_params.get('club_id')
         if club_id and club_id.isdigit():
             club_id = int(club_id)
-            # Get users who are members of the specified club
-            club_user_ids = ClubUser.objects.filter(club_id=club_id).values_list('user_id', flat=True)
-            queryset = queryset.filter(id__in=club_user_ids)
+            logger.info(f'Filtering users by club_id: {club_id}')
             
+            # Get users who are members of the specified club
+            club_member_ids = ClubUser.objects.filter(club_id=club_id).values_list('user_id', flat=True)
+            logger.info(f'Found club members: {list(club_member_ids)}')
+            
+            # For staff users viewing a specific club
+            if self.request.user.is_staff:
+                # Get all clubs this user is a member of
+                user_club_ids = ClubUser.objects.filter(user=self.request.user).values_list('club_id', flat=True)
+                logger.info(f'Staff user is member of clubs: {list(user_club_ids)}')
+                
+                # If viewing their own club, show members
+                if club_id in user_club_ids:
+                    logger.info('Staff user viewing own club - returning member users')
+                    queryset = queryset.filter(id__in=club_member_ids)
+                else:
+                    # If viewing another club, show non-members who can be added
+                    logger.info('Staff user viewing other club - returning non-member users')
+                    queryset = queryset.exclude(id__in=club_member_ids)
+            else:
+                # Regular users only see members of their clubs
+                logger.info('Regular user - returning member users')
+                queryset = queryset.filter(id__in=club_member_ids)
+        
+        logger.info(f'Final queryset count: {queryset.count()}')
         return queryset
 
     def perform_destroy(self, instance):

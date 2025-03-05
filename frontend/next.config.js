@@ -2,6 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['antd'],
+  output: 'standalone',
+  experimental: {
+    outputFileTracingRoot: undefined, // Ensures all files are included in the trace
+  },
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
@@ -9,7 +13,6 @@ const nextConfig = {
     };
     return config;
   },
-  output: 'standalone',
   // Ensure environment variables are available at runtime
   serverRuntimeConfig: {
     // Will only be available on the server side
@@ -25,11 +28,7 @@ const nextConfig = {
         destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010'}/:path*`,
       },
     ]
-  },
-  // Ensure static files are copied to the output directory
-  experimental: {
-    outputFileTracingRoot: undefined,
-  },
+  }
 }
 
 module.exports = nextConfig 

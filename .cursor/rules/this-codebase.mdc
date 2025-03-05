@@ -1,6 +1,6 @@
 ---
-description: 
-globs: 
+description: All code
+globs: *
 alwaysApply: false
 ---
 
