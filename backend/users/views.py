@@ -36,6 +36,23 @@ class ClubViewSet(viewsets.ModelViewSet):
         club = serializer.save()
         # Add the user who created the club as an admin
         ClubUser.objects.create(user=self.request.user, club=club, is_admin=True)
+        
+    @action(detail=True, methods=['get'])
+    def members(self, request, pk=None):
+        """Get all members of a club"""
+        club = self.get_object()
+        
+        # Check if user is a member of this club
+        if not ClubUser.objects.filter(user=request.user, club=club).exists() and not request.user.is_superuser:
+            return Response(
+                {'error': 'You must be a member of this club to view members'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        club_users = ClubUser.objects.filter(club=club)
+        users = [cu.user for cu in club_users]
+        serializer = UserSerializer(users, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
     def add_user(self, request, pk=None):
@@ -140,7 +157,7 @@ class ClubUserViewSet(viewsets.ModelViewSet):
             models.Q(user=self.request.user) | models.Q(club_id__in=admin_clubs)
         )
 
-    @action(detail=False, methods=['put'])
+    @action(detail=False, methods=['post', 'put'])
     def set_current_club(self, request):
         club_id = request.data.get('club_id')
         if not club_id:
@@ -165,6 +182,9 @@ class ClubUserViewSet(viewsets.ModelViewSet):
                 club_user.last_login_at = timezone.now()
                 club_user.save()
                 
+                # Save club ID in session
+                request.session['current_club_id'] = club.id
+                
                 return Response({
                     'message': 'Current club updated',
                     'club': ClubSerializer(club).data
@@ -181,6 +201,9 @@ class ClubUserViewSet(viewsets.ModelViewSet):
                 club_user = ClubUser.objects.get(user=request.user, club_id=club_id)
                 club_user.last_login_at = timezone.now()
                 club_user.save()
+                
+                # Save club ID in session
+                request.session['current_club_id'] = club_user.club.id
                 
                 return Response({
                     'message': 'Current club updated',
@@ -203,8 +226,8 @@ class UserViewSet(viewsets.ModelViewSet):
         logger.info(f'Checking permissions for action: {self.action}')
         if self.action in ['create', 'login', 'me', 'register']:
             return [permissions.AllowAny()]
-        elif self.action == 'list':
-            # Allow authenticated users to list users
+        elif self.action in ['list', 'clubs']:
+            # Allow authenticated users to list users and access their clubs
             return [permissions.IsAuthenticated()]
         return super().get_permissions()
 
@@ -269,10 +292,28 @@ class UserViewSet(viewsets.ModelViewSet):
             if club_users.exists():
                 current_club = ClubSerializer(club_users.first().club).data
                 
+                # Set current club in session if not already set
+                if 'current_club_id' not in request.session:
+                    request.session['current_club_id'] = club_users.first().club.id
+                
+            # Get all clubs the user is a member of
+            clubs = [ClubSerializer(cu.club).data for cu in club_users]
+                
             return Response({
                 'user': serializer.data,
-                'current_club': current_club
+                'current_club': current_club,
+                'clubs': clubs
             })
+        return Response({'error': 'Not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+    @action(detail=False, methods=['get'])
+    def clubs(self, request):
+        """Get all clubs that the user is a member of"""
+        if request.user.is_authenticated:
+            club_users = ClubUser.objects.filter(user=request.user).order_by('-last_login_at')
+            clubs = [cu.club for cu in club_users]
+            serializer = ClubSerializer(clubs, many=True)
+            return Response(serializer.data)
         return Response({'error': 'Not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
 
     def perform_create(self, serializer):

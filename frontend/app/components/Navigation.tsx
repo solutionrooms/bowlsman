@@ -36,12 +36,23 @@ export default function Navigation({ onLogout }: NavigationProps) {
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    // Create a flag to prevent multiple calls
+    let isMounted = true;
+    
     const fetchUserData = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
+        // Safely access localStorage with browser check
+        let token = null;
+        if (typeof window !== 'undefined') {
+          token = localStorage.getItem('token');
+          if (!token) return;
+        } else {
+          return; // Not in browser context
+        }
 
         const response = await api.get<{user: User, current_club: Club | null}>('/users/me/');
+        
+        if (!isMounted) return;
         
         setUser(response.data.user);
         setCurrentClub(response.data.current_club);
@@ -52,59 +63,88 @@ export default function Navigation({ onLogout }: NavigationProps) {
 
         // If user is staff, fetch all clubs
         if (response.data.user.is_staff) {
-          const clubsResponse = await api.get<Club[]>('/clubs/', {
-            headers: { Authorization: `Token ${token}` }
-          });
+          const clubsResponse = await api.get<Club[]>('/clubs/');
+          if (!isMounted) return;
           setAllClubs(clubsResponse.data);
         }
       } catch (error) {
+        if (!isMounted) return;
         console.error('Error fetching user data:', error);
       }
     };
 
     fetchUserData();
     
-    // Get current club from localStorage as fallback
-    const storedClub = localStorage.getItem('currentClub');
-    if (storedClub) {
-      setCurrentClub(JSON.parse(storedClub));
+    // Get current club from localStorage as fallback - safely
+    if (typeof window !== 'undefined') {
+      const storedClub = localStorage.getItem('currentClub');
+      if (storedClub) {
+        try {
+          setCurrentClub(JSON.parse(storedClub));
+        } catch (e) {
+          // Handle potential JSON parse error
+          localStorage.removeItem('currentClub');
+        }
+      }
     }
+    
+    // Cleanup function to prevent state updates after unmount
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('currentClub');
+    // Safely access localStorage only in browser context
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('token');
+        localStorage.removeItem('currentClub');
+      } catch (e) {
+        // Handle localStorage errors silently
+      }
+    }
     onLogout();
   };
 
   const handleClubChange = async (clubId: number) => {
     try {
-      const token = localStorage.getItem('token');
+      // Safe localStorage check
+      if (typeof window === 'undefined') return;
+      
       const endpoint = 'club-users/set_current_club/';
       
       const response = await api.put<{message: string, club: Club}>(
         endpoint,
-        { club_id: clubId },
-        { headers: { Authorization: `Token ${token}` } }
+        { club_id: clubId }
       );
       
-      localStorage.setItem('currentClub', JSON.stringify(response.data.club));
+      // Safely update localStorage
+      try {
+        localStorage.setItem('currentClub', JSON.stringify(response.data.club));
+      } catch (e) {
+        // Handle localStorage errors silently
+      }
+      
       setCurrentClub(response.data.club);
       setClubDropdownOpen(false);
       setMessage(null); // Clear any previous error messages
       
-      // Dispatch a custom event to notify all components about the club change
-      const clubChangeEvent = new CustomEvent('clubChanged', { 
-        detail: { club: response.data.club }
-      });
-      window.dispatchEvent(clubChangeEvent);
-      
-      // If on a page that needs refresh, reload it
-      const currentPath = window.location.pathname;
-      if (currentPath === '/bowlers' || 
-          currentPath.startsWith('/competition/') || 
-          currentPath.includes('/club/')) {
-        window.location.reload();
+      // Safely dispatch event only in browser context
+      if (typeof window !== 'undefined') {
+        // Dispatch a custom event to notify all components about the club change
+        const clubChangeEvent = new CustomEvent('clubChanged', { 
+          detail: { club: response.data.club }
+        });
+        window.dispatchEvent(clubChangeEvent);
+        
+        // If on a page that needs refresh, reload it
+        const currentPath = window.location.pathname;
+        if (currentPath === '/bowlers' || 
+            currentPath.startsWith('/competition/') || 
+            currentPath.includes('/club/')) {
+          window.location.reload();
+        }
       }
     } catch (error) {
       console.error('Error changing club:', error);
@@ -167,6 +207,14 @@ export default function Navigation({ onLogout }: NavigationProps) {
                   }`}
                 >
                   Bowlers
+                </Link>
+                <Link
+                  href="/messaging"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    pathname?.startsWith('/messaging') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Messages
                 </Link>
                 {user?.is_staff && (
                   <Link
@@ -390,6 +438,14 @@ export default function Navigation({ onLogout }: NavigationProps) {
             }`}
           >
             Bowlers
+          </Link>
+          <Link
+            href="/messaging"
+            className={`block px-3 py-2 rounded-md text-base font-medium ${
+              pathname?.startsWith('/messaging') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+            }`}
+          >
+            Messages
           </Link>
           {user?.is_staff && (
             <Link

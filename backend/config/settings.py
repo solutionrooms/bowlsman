@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'drf_spectacular',
     'users',
+    'messaging',
     'rest_framework.authtoken',
 ]
 

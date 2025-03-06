@@ -116,3 +116,5 @@ environment.yml
 ehthumbs.db
 Thumbs.db 
 webapp2.dump
+
+servers/
