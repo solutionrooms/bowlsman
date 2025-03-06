@@ -31,6 +31,8 @@ class Competition(models.Model):
         ('open', 'Open'),
         ('full', 'Full'),
         ('scheduled', 'Scheduled'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
     ]
 
     name = models.CharField(max_length=100)
@@ -111,3 +113,18 @@ class CompetitionUser(models.Model):
             max_order = CompetitionUser.objects.filter(competition=self.competition).aggregate(models.Max('order'))['order__max']
             self.order = (max_order or 0) + 1
         super().save(*args, **kwargs) 
+
+class GameScore(models.Model):
+    schedule = models.ForeignKey(CompetitionSchedule, on_delete=models.CASCADE, related_name='scores')
+    side_1_score = models.IntegerField(default=0)
+    side_2_score = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed = models.BooleanField(default=False)
+    
+    class Meta:
+        ordering = ['-updated_at']
+        unique_together = ['schedule']
+        
+    def __str__(self):
+        return f"{self.schedule} - {self.side_1_score} vs {self.side_2_score}"

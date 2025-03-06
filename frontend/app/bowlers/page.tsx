@@ -7,53 +7,123 @@ import api from '../../src/lib/axios';
 
 interface Bowler {
   id: number;
-  name: string;
-  avatar: string;
-  average: number;
-  games_played: number;
-  high_score: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  avatar?: string;
+  // Will add these fields later
+  // phone_number?: string;
+  // average?: number;
+  // games_played?: number;
+  // high_score?: number;
 }
 
 export default function Bowlers() {
   const [bowlers, setBowlers] = useState<Bowler[]>([]);
+  const [filteredBowlers, setFilteredBowlers] = useState<Bowler[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [currentClub, setCurrentClub] = useState<any>(null);
   const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    const fetchBowlers = async () => {
+  // Function to fetch bowlers data
+  const fetchBowlers = async () => {
+    try {
+      if (!mounted) return;
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        router.push('/');
+        return;
+      }
+      
+      setLoading(true);
+      
+      // First, get the current club
       try {
-        if (!mounted) return;
+        const userResponse = await api.get('/users/me/', {
+          headers: { Authorization: `Token ${token}` }
+        });
         
-        const token = localStorage.getItem('token');
-        if (!token) {
-          router.push('/');
-          return;
+        if (userResponse.data.current_club) {
+          setCurrentClub(userResponse.data.current_club);
+          
+          // Then fetch club members
+          const membersResponse = await api.get(`/users/?club_id=${userResponse.data.current_club.id}`, {
+            headers: { Authorization: `Token ${token}` }
+          });
+          
+          const clubMembers = membersResponse.data.map((user: any) => ({
+            id: user.id,
+            username: user.username,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            email: user.email
+          }));
+          
+          setBowlers(clubMembers);
+          setFilteredBowlers(clubMembers);
+          setError(null);
+        } else {
+          setBowlers([]);
+          setFilteredBowlers([]);
+          setError('No club selected. Please select a club first.');
         }
-
-        // This is just a placeholder - replace with actual API endpoint when available
-        setLoading(false);
-        
-        // Uncomment and modify when the API endpoint is ready
-        // const response = await api.get<Bowler[]>('/bowlers/', {
-        //   headers: { Authorization: `Token ${token}` }
-        // });
-        // setBowlers(response.data);
-        // setLoading(false);
       } catch (error) {
-        console.error('Error fetching bowlers:', error);
-        setError('Failed to load bowlers. Please try again later.');
-        setLoading(false);
+        console.error('Error fetching club members:', error);
+        setError('Failed to load club members. Please try again later.');
+      }
+      
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching bowlers:', error);
+      setError('Failed to load bowlers. Please try again later.');
+      setLoading(false);
+    }
+  };
+
+  // Initial load
+  useEffect(() => {
+    if (mounted) {
+      fetchBowlers();
+    }
+  }, [router, mounted]);
+  
+  // Listen for club change events
+  useEffect(() => {
+    const handleClubChange = () => {
+      if (mounted) {
+        fetchBowlers();
       }
     };
+    
+    window.addEventListener('clubChanged', handleClubChange);
+    
+    return () => {
+      window.removeEventListener('clubChanged', handleClubChange);
+    };
+  }, [mounted]);
 
-    fetchBowlers();
-  }, [router, mounted]);
+  useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setFilteredBowlers(bowlers);
+    } else {
+      const lowercasedSearch = searchTerm.toLowerCase();
+      const filtered = bowlers.filter(bowler => 
+        bowler.username.toLowerCase().includes(lowercasedSearch) ||
+        bowler.first_name.toLowerCase().includes(lowercasedSearch) ||
+        bowler.last_name.toLowerCase().includes(lowercasedSearch)
+      );
+      setFilteredBowlers(filtered);
+    }
+  }, [searchTerm, bowlers]);
 
   const handleLogout = () => {
     if (mounted) {
@@ -75,25 +145,92 @@ export default function Bowlers() {
       <Navigation onLogout={handleLogout} />
       <div className="container mx-auto px-4 py-8">
         <div className="bg-white shadow rounded-lg p-6">
-          <h1 className="text-2xl font-bold mb-6">Bowlers</h1>
-          
-          <div className="text-center py-8">
-            <div className="mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold mb-2">Bowler Profiles Coming Soon</h2>
-            <p className="text-gray-600 mb-6">
-              We're working on this feature. Check back soon for bowler profiles, statistics, and management.
-            </p>
-            <button
-              onClick={() => router.push('/home')}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-            >
-              Return to Dashboard
-            </button>
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Bowlers</h1>
+            {currentClub && (
+              <div className="text-sm text-gray-600">
+                Club: <span className="font-semibold">{currentClub.name}</span>
+              </div>
+            )}
           </div>
+          
+          {!currentClub ? (
+            <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
+              No club selected. Please select a club to view its members.
+            </div>
+          ) : (
+            <>
+              <div className="mb-6">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                  </div>
+                  <input
+                    type="search"
+                    className="block w-full p-4 pl-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Search by name or username..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              </div>
+              
+              {error ? (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                  {error}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white border border-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Username
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          First Name
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Last Name
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Email
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {filteredBowlers.length > 0 ? (
+                        filteredBowlers.map((bowler) => (
+                          <tr key={bowler.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {bowler.username}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {bowler.first_name}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {bowler.last_name}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {bowler.email}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
+                            No bowlers found matching your search criteria.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </>

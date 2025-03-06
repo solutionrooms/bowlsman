@@ -92,6 +92,20 @@ export default function Navigation({ onLogout }: NavigationProps) {
       setCurrentClub(response.data.club);
       setClubDropdownOpen(false);
       setMessage(null); // Clear any previous error messages
+      
+      // Dispatch a custom event to notify all components about the club change
+      const clubChangeEvent = new CustomEvent('clubChanged', { 
+        detail: { club: response.data.club }
+      });
+      window.dispatchEvent(clubChangeEvent);
+      
+      // If on a page that needs refresh, reload it
+      const currentPath = window.location.pathname;
+      if (currentPath === '/bowlers' || 
+          currentPath.startsWith('/competition/') || 
+          currentPath.includes('/club/')) {
+        window.location.reload();
+      }
     } catch (error) {
       console.error('Error changing club:', error);
       setMessage('Failed to change club. Please try again.');
@@ -126,6 +140,26 @@ export default function Navigation({ onLogout }: NavigationProps) {
                 >
                   Competitions
                 </Link>
+                {currentClub && (
+                  <>
+                    <Link
+                      href={`/competition/scoring/${currentClub.id}`}
+                      className={`px-3 py-2 rounded-md text-sm font-medium ${
+                        pathname?.startsWith('/competition/scoring/') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                      }`}
+                    >
+                      Scoring
+                    </Link>
+                    <Link
+                      href={`/competition/results/${currentClub.id}`}
+                      className={`px-3 py-2 rounded-md text-sm font-medium ${
+                        pathname?.startsWith('/competition/results/') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                      }`}
+                    >
+                      Results
+                    </Link>
+                  </>
+                )}
                 <Link
                   href="/bowlers"
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
@@ -329,6 +363,26 @@ export default function Navigation({ onLogout }: NavigationProps) {
           >
             Competitions
           </Link>
+          {currentClub && (
+            <>
+              <Link
+                href={`/competition/scoring/${currentClub.id}`}
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  pathname?.startsWith('/competition/scoring/') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Scoring
+              </Link>
+              <Link
+                href={`/competition/results/${currentClub.id}`}
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  pathname?.startsWith('/competition/results/') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Results
+              </Link>
+            </>
+          )}
           <Link
             href="/bowlers"
             className={`block px-3 py-2 rounded-md text-base font-medium ${

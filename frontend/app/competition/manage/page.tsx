@@ -45,7 +45,7 @@ interface Competition {
   is_full: boolean;
   players: Player[];
   available_slots: number;
-  status: 'open' | 'full' | 'scheduled';
+  status: 'open' | 'full' | 'scheduled' | 'in_progress' | 'completed';
 }
 
 interface CompetitionSchedule {
@@ -103,22 +103,27 @@ export default function ManageCompetitions() {
   // Add click outside handler
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      // Only close if clicking outside any menu button or menu content
+      // Only process if a menu is open
       if (openMenuId !== null) {
-        // Check if the click was on a menu toggle button (which has its own handler)
-        const isMenuButton = (event.target as Element).closest('[data-menu-button]');
-        if (!isMenuButton) {
-          // Check if the click was inside a menu
-          const isInsideMenu = (event.target as Element).closest('[data-menu-content]');
-          if (!isInsideMenu) {
-            setOpenMenuId(null);
-          }
+        // Get the actual target element
+        const targetElement = event.target as Element;
+        
+        // Check if the click was on a menu toggle button
+        const isMenuButton = targetElement.closest('[data-menu-button]');
+        
+        // Check if the click was inside a menu content
+        const isInsideMenu = targetElement.closest('[data-menu-content]');
+        
+        // Only close the menu if the click was outside both menu button and menu content
+        if (!isMenuButton && !isInsideMenu) {
+          setOpenMenuId(null);
         }
       }
     }
 
     // Add event listener when dropdown is open
     if (openMenuId !== null) {
+      // Use mousedown for better mobile compatibility
       document.addEventListener('mousedown', handleClickOutside);
     }
     
@@ -439,13 +444,52 @@ export default function ManageCompetitions() {
     }
   };
 
+  const handleStartCompetition = async (competition: Competition) => {
+    console.log("Starting competition with ID:", competition.id, "Current status:", competition.status);
+    if (!confirm('Are you sure you want to start this competition? This will initialize scoring for all matches.')) return;
+
+    try {
+      console.log("Making API call to start competition");
+      const response = await api.post(`/competitions/${competition.id}/start_competition/`);
+      console.log("API response:", response.data);
+      
+      notification.success({
+        message: 'Competition Started',
+        description: 'Competition has been successfully started',
+        duration: 4,
+      });
+      
+      // Update competition status to in_progress
+      const updatedCompetitions = competitions.map(comp => 
+        comp.id === competition.id ? { ...comp, status: 'in_progress' } : comp
+      );
+      console.log("Updated competition status to in_progress");
+      setCompetitions(updatedCompetitions);
+    } catch (error) {
+      console.error('Error starting competition:', error);
+      
+      notification.error({
+        message: 'Start Error',
+        description: 'Failed to start competition',
+        duration: 4,
+      });
+    }
+  };
+
   const getPlayerName = (playerId: number, competition: Competition) => {
     const player = competition.players.find(p => p.id === playerId);
     return player?.username || 'Unknown Player';
   };
 
-  const toggleMenu = (competitionId: number) => {
-    setOpenMenuId(openMenuId === competitionId ? null : competitionId);
+  const toggleMenu = (competitionId: number, event?: React.MouseEvent) => {
+    // Prevent event from bubbling up to parent elements
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    // Toggle the menu open/closed state
+    const newMenuId = openMenuId === competitionId ? null : competitionId;
+    setOpenMenuId(newMenuId);
   };
 
   const handleReplacePlayer = async () => {
@@ -595,6 +639,10 @@ export default function ManageCompetitions() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {competition.status === 'scheduled' ? (
                           <span className="text-purple-600 font-bold">Scheduled</span>
+                        ) : competition.status === 'in_progress' ? (
+                          <span className="text-blue-600 font-bold">In Progress</span>
+                        ) : competition.status === 'completed' ? (
+                          <span className="text-indigo-600 font-bold">Completed</span>
                         ) : (competition.num_players - competition.available_slots) > competition.num_players ? (
                           <span className="text-red-600 font-bold">Too Many Players</span>
                         ) : competition.is_full ? (
@@ -603,12 +651,37 @@ export default function ManageCompetitions() {
                           <span>{competition.available_slots} slots left</span>
                         )}
                         {competition.status === 'scheduled' ? (
+                          <>
+                            <button
+                              onClick={() => handleViewSchedule(competition)}
+                              className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200"
+                              title="View Schedule"
+                            >
+                              View Schedule
+                            </button>
+                            <button
+                              onClick={() => handleStartCompetition(competition)}
+                              className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200"
+                              title="Start Competition"
+                            >
+                              Start
+                            </button>
+                          </>
+                        ) : competition.status === 'in_progress' ? (
                           <button
-                            onClick={() => handleViewSchedule(competition)}
-                            className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200"
-                            title="View Schedule"
+                            onClick={() => router.push(`/competition/scoring/${competition.id}`)}
+                            className="ml-2 px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded hover:bg-purple-200"
+                            title="Scoring"
                           >
-                            View Schedule
+                            Scoring
+                          </button>
+                        ) : competition.status === 'completed' ? (
+                          <button
+                            onClick={() => router.push(`/competition/results/${competition.id}`)}
+                            className="ml-2 px-2 py-1 text-xs bg-indigo-100 text-indigo-800 rounded hover:bg-indigo-200"
+                            title="Results"
+                          >
+                            Results
                           </button>
                         ) : competition.is_full ? (
                           <button
@@ -631,7 +704,7 @@ export default function ManageCompetitions() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium relative">
                         <div className="relative">
                           <button
-                            onClick={() => toggleMenu(competition.id)}
+                            onClick={(e) => toggleMenu(competition.id, e)}
                             className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
                             data-menu-button
                           >
@@ -640,11 +713,12 @@ export default function ManageCompetitions() {
                           
                           {openMenuId === competition.id && (
                             <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10" data-menu-content>
+                              {console.log("Rendering menu for competition:", competition.id, "with status:", competition.status)}
                               <div className="py-1" role="menu">
                                 <button
                                   onClick={() => {
                                     handleManagePlayers(competition);
-                                    toggleMenu(competition.id);
+                                    setOpenMenuId(null);
                                   }}
                                   className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-gray-100"
                                 >
@@ -653,7 +727,7 @@ export default function ManageCompetitions() {
                                 <button
                                   onClick={() => {
                                     handleEdit(competition);
-                                    toggleMenu(competition.id);
+                                    setOpenMenuId(null);
                                   }}
                                   className="block w-full text-left px-4 py-2 text-sm text-indigo-600 hover:bg-gray-100"
                                 >
@@ -663,7 +737,7 @@ export default function ManageCompetitions() {
                                   <button
                                     onClick={() => {
                                       handleSchedule(competition);
-                                      toggleMenu(competition.id);
+                                      setOpenMenuId(null);
                                     }}
                                     className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
                                   >
@@ -675,7 +749,7 @@ export default function ManageCompetitions() {
                                     <button
                                       onClick={() => {
                                         handleViewSchedule(competition);
-                                        toggleMenu(competition.id);
+                                        setOpenMenuId(null);
                                       }}
                                       className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
                                     >
@@ -683,8 +757,17 @@ export default function ManageCompetitions() {
                                     </button>
                                     <button
                                       onClick={() => {
+                                        handleStartCompetition(competition);
+                                        setOpenMenuId(null);
+                                      }}
+                                      className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-gray-100"
+                                    >
+                                      Start Competition
+                                    </button>
+                                    <button
+                                      onClick={() => {
                                         handleDeleteSchedule(competition);
-                                        toggleMenu(competition.id);
+                                        setOpenMenuId(null);
                                       }}
                                       className="block w-full text-left px-4 py-2 text-sm text-yellow-600 hover:bg-gray-100"
                                     >
@@ -692,10 +775,45 @@ export default function ManageCompetitions() {
                                     </button>
                                   </>
                                 )}
+                                {competition.status === 'in_progress' && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        router.push(`/competition/scoring/${competition.id}`);
+                                        setOpenMenuId(null);
+                                      }}
+                                      className="block w-full text-left px-4 py-2 text-sm text-purple-600 hover:bg-gray-100"
+                                    >
+                                      Scoring
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleViewSchedule(competition);
+                                        setOpenMenuId(null);
+                                      }}
+                                      className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
+                                    >
+                                      View Schedule
+                                    </button>
+                                  </>
+                                )}
+                                {competition.status === 'completed' && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        router.push(`/competition/results/${competition.id}`);
+                                        setOpenMenuId(null);
+                                      }}
+                                      className="block w-full text-left px-4 py-2 text-sm text-purple-600 hover:bg-gray-100"
+                                    >
+                                      View Results
+                                    </button>
+                                  </>
+                                )}
                                 <button
                                   onClick={() => {
                                     handleDelete(competition.id);
-                                    toggleMenu(competition.id);
+                                    setOpenMenuId(null);
                                   }}
                                   className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                                 >
@@ -720,7 +838,7 @@ export default function ManageCompetitions() {
                     <h3 className="text-lg font-medium text-gray-900">{competition.name}</h3>
                     <div className="relative">
                       <button
-                        onClick={() => toggleMenu(competition.id)}
+                        onClick={(e) => toggleMenu(competition.id, e)}
                         className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
                         data-menu-button
                       >
@@ -733,7 +851,7 @@ export default function ManageCompetitions() {
                             <button
                               onClick={() => {
                                 handleManagePlayers(competition);
-                                toggleMenu(competition.id);
+                                setOpenMenuId(null);
                               }}
                               className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-gray-100"
                             >
@@ -742,7 +860,7 @@ export default function ManageCompetitions() {
                             <button
                               onClick={() => {
                                 handleEdit(competition);
-                                toggleMenu(competition.id);
+                                setOpenMenuId(null);
                               }}
                               className="block w-full text-left px-4 py-2 text-sm text-indigo-600 hover:bg-gray-100"
                             >
@@ -752,7 +870,7 @@ export default function ManageCompetitions() {
                               <button
                                 onClick={() => {
                                   handleSchedule(competition);
-                                  toggleMenu(competition.id);
+                                  setOpenMenuId(null);
                                 }}
                                 className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
                               >
@@ -764,7 +882,7 @@ export default function ManageCompetitions() {
                                 <button
                                   onClick={() => {
                                     handleViewSchedule(competition);
-                                    toggleMenu(competition.id);
+                                    setOpenMenuId(null);
                                   }}
                                   className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
                                 >
@@ -772,8 +890,17 @@ export default function ManageCompetitions() {
                                 </button>
                                 <button
                                   onClick={() => {
+                                    handleStartCompetition(competition);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-gray-100"
+                                >
+                                  Start
+                                </button>
+                                <button
+                                  onClick={() => {
                                     handleDeleteSchedule(competition);
-                                    toggleMenu(competition.id);
+                                    setOpenMenuId(null);
                                   }}
                                   className="block w-full text-left px-4 py-2 text-sm text-yellow-600 hover:bg-gray-100"
                                 >
@@ -781,10 +908,45 @@ export default function ManageCompetitions() {
                                 </button>
                               </>
                             )}
+                            {competition.status === 'in_progress' && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    router.push(`/competition/scoring/${competition.id}`);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="block w-full text-left px-4 py-2 text-sm text-purple-600 hover:bg-gray-100"
+                                >
+                                  Scoring
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    handleViewSchedule(competition);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
+                                >
+                                  View Schedule
+                                </button>
+                              </>
+                            )}
+                            {competition.status === 'completed' && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    router.push(`/competition/results/${competition.id}`);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="block w-full text-left px-4 py-2 text-sm text-purple-600 hover:bg-gray-100"
+                                >
+                                  Results
+                                </button>
+                              </>
+                            )}
                             <button
                               onClick={() => {
                                 handleDelete(competition.id);
-                                toggleMenu(competition.id);
+                                setOpenMenuId(null);
                               }}
                               className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                             >
@@ -821,6 +983,10 @@ export default function ManageCompetitions() {
                         <span className={`font-medium ${
                           competition.status === 'scheduled'
                             ? 'text-purple-600'
+                            : competition.status === 'in_progress'
+                            ? 'text-blue-600'
+                            : competition.status === 'completed'
+                            ? 'text-indigo-600'
                             : (competition.num_players - competition.available_slots) > competition.num_players
                             ? 'text-red-600'
                             : competition.is_full
@@ -829,6 +995,10 @@ export default function ManageCompetitions() {
                         }`}>
                           {competition.status === 'scheduled'
                             ? 'Scheduled'
+                            : competition.status === 'in_progress'
+                            ? 'In Progress'
+                            : competition.status === 'completed'
+                            ? 'Completed'
                             : (competition.num_players - competition.available_slots) > competition.num_players
                             ? 'Too Many Players'
                             : competition.is_full
@@ -836,12 +1006,37 @@ export default function ManageCompetitions() {
                             : `${competition.available_slots} slots left`}
                         </span>
                         {competition.status === 'scheduled' ? (
+                          <>
+                            <button
+                              onClick={() => handleViewSchedule(competition)}
+                              className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200"
+                              title="View Schedule"
+                            >
+                              View
+                            </button>
+                            <button
+                              onClick={() => handleStartCompetition(competition)}
+                              className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200"
+                              title="Start Competition"
+                            >
+                              Start
+                            </button>
+                          </>
+                        ) : competition.status === 'in_progress' ? (
                           <button
-                            onClick={() => handleViewSchedule(competition)}
-                            className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200"
-                            title="View Schedule"
+                            onClick={() => router.push(`/competition/scoring/${competition.id}`)}
+                            className="ml-2 px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded hover:bg-purple-200"
+                            title="Scoring"
                           >
-                            View
+                            Score
+                          </button>
+                        ) : competition.status === 'completed' ? (
+                          <button
+                            onClick={() => router.push(`/competition/results/${competition.id}`)}
+                            className="ml-2 px-2 py-1 text-xs bg-indigo-100 text-indigo-800 rounded hover:bg-indigo-200"
+                            title="Results"
+                          >
+                            Results
                           </button>
                         ) : competition.is_full ? (
                           <button

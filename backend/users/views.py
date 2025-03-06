@@ -9,13 +9,14 @@ from rest_framework.authentication import TokenAuthentication
 from django.utils import timezone
 from .serializers import (
     UserSerializer, CompetitionSerializer, CompetitionUserSerializer, 
-    CompetitionScheduleSerializer, ClubSerializer, ClubUserSerializer
+    CompetitionScheduleSerializer, ClubSerializer, ClubUserSerializer,
+    GameScoreSerializer
 )
-from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore
 import logging
 import random
 from .scheduling import create_round_robin_schedule
-from django.db import models
+from django.db import models, transaction
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,8 @@ class UserViewSet(viewsets.ModelViewSet):
         
         # Filter by club_id if specified in query params
         club_id = self.request.query_params.get('club_id')
+        show_non_members = self.request.query_params.get('show_non_members') == 'true'
+        
         if club_id and club_id.isdigit():
             club_id = int(club_id)
             logger.info(f'Filtering users by club_id: {club_id}')
@@ -221,23 +224,16 @@ class UserViewSet(viewsets.ModelViewSet):
             club_member_ids = ClubUser.objects.filter(club_id=club_id).values_list('user_id', flat=True)
             logger.info(f'Found club members: {list(club_member_ids)}')
             
-            # For staff users viewing a specific club
-            if self.request.user.is_staff:
-                # Get all clubs this user is a member of
-                user_club_ids = ClubUser.objects.filter(user=self.request.user).values_list('club_id', flat=True)
-                logger.info(f'Staff user is member of clubs: {list(user_club_ids)}')
-                
-                # If viewing their own club, show members
-                if club_id in user_club_ids:
-                    logger.info('Staff user viewing own club - returning member users')
-                    queryset = queryset.filter(id__in=club_member_ids)
-                else:
-                    # If viewing another club, show non-members who can be added
-                    logger.info('Staff user viewing other club - returning non-member users')
-                    queryset = queryset.exclude(id__in=club_member_ids)
+            # Check if user is club admin
+            is_club_admin = ClubUser.objects.filter(user=self.request.user, club_id=club_id, is_admin=True).exists()
+            
+            # For staff users or club admins showing non-members
+            if (self.request.user.is_staff or is_club_admin) and show_non_members:
+                logger.info('Staff/admin user showing non-members of club for management')
+                queryset = queryset.exclude(id__in=club_member_ids)
             else:
-                # Regular users only see members of their clubs
-                logger.info('Regular user - returning member users')
+                # Otherwise just show members (default behavior)
+                logger.info('Showing club members only')
                 queryset = queryset.filter(id__in=club_member_ids)
         
         logger.info(f'Final queryset count: {queryset.count()}')
@@ -554,6 +550,51 @@ class CompetitionViewSet(viewsets.ModelViewSet):
         
         # Return success response
         return Response({'message': 'Schedule successfully deleted'}, status=status.HTTP_200_OK)
+        
+    @action(detail=True, methods=['post'])
+    def start_competition(self, request, pk=None):
+        competition = self.get_object()
+        
+        # Check if user belongs to the club
+        if not ClubUser.objects.filter(user=request.user, club=competition.club).exists() and not request.user.is_superuser:
+            return Response(
+                {'error': 'You must be a member of the club to start a competition'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if competition is scheduled
+        if competition.status != 'scheduled':
+            return Response(
+                {'error': 'Only scheduled competitions can be started'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            with transaction.atomic():
+                # Create initial score records for all schedule entries
+                schedules = CompetitionSchedule.objects.filter(competition=competition)
+                
+                # Check if any scores already exist
+                existing_scores = GameScore.objects.filter(schedule__competition=competition).exists()
+                if not existing_scores:
+                    for schedule in schedules:
+                        GameScore.objects.create(schedule=schedule)
+                
+                # Update competition status
+                competition.status = 'in_progress'
+                competition.save()
+                
+                return Response({
+                    'message': 'Competition started successfully',
+                    'status': competition.status
+                })
+                
+        except Exception as e:
+            logger.error(f"Error starting competition: {str(e)}", exc_info=True)
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=True, methods=['post'])
     def create_schedule(self, request, pk=None):
@@ -676,6 +717,39 @@ class CompetitionUserViewSet(viewsets.ModelViewSet):
         # Users can only see competition users from clubs they are members of
         user_clubs = ClubUser.objects.filter(user=self.request.user).values_list('club_id', flat=True)
         return CompetitionUser.objects.filter(competition__club_id__in=user_clubs)
+        
+class GameScoreViewSet(viewsets.ModelViewSet):
+    serializer_class = GameScoreSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        # Users can only see game scores from clubs they are members of
+        user_clubs = ClubUser.objects.filter(user=self.request.user).values_list('club_id', flat=True)
+        return GameScore.objects.filter(schedule__competition__club_id__in=user_clubs)
+    
+    def perform_update(self, serializer):
+        game_score = serializer.save()
+        
+        # Check if all games in the competition have been completed
+        competition = game_score.schedule.competition
+        all_completed = True
+        
+        # Check if all games are completed
+        for schedule in CompetitionSchedule.objects.filter(competition=competition):
+            try:
+                score = schedule.scores.first()
+                if not score or not score.completed:
+                    all_completed = False
+                    break
+            except GameScore.DoesNotExist:
+                all_completed = False
+                break
+        
+        # If all games are completed, mark the competition as completed
+        if all_completed and competition.status == 'in_progress':
+            competition.status = 'completed'
+            competition.save()
 
 def create_dummy_schedule(competition, players, team_size=2):
     """

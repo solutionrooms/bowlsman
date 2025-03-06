@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore
 
 class ClubSerializer(serializers.ModelSerializer):
     member_count = serializers.SerializerMethodField()
@@ -121,11 +121,37 @@ class CompetitionSerializer(serializers.ModelSerializer):
         return obj.num_players - obj.competition_users.count()
 
 class CompetitionScheduleSerializer(serializers.ModelSerializer):
+    score = serializers.SerializerMethodField()
+    
     class Meta:
         model = CompetitionSchedule
         fields = [
             'id', 'competition', 'round', 'sub_round', 'created_at',
             'side_1_player_1', 'side_1_player_2', 'side_1_player_3', 'side_1_player_4',
-            'side_2_player_1', 'side_2_player_2', 'side_2_player_3', 'side_2_player_4'
+            'side_2_player_1', 'side_2_player_2', 'side_2_player_3', 'side_2_player_4',
+            'score'
         ]
-        read_only_fields = ['created_at'] 
+        read_only_fields = ['created_at']
+    
+    def get_score(self, obj):
+        try:
+            score = obj.scores.first()
+            if score:
+                return {
+                    'id': score.id,
+                    'side_1_score': score.side_1_score,
+                    'side_2_score': score.side_2_score,
+                    'completed': score.completed
+                }
+            return None
+        except GameScore.DoesNotExist:
+            return None
+
+class GameScoreSerializer(serializers.ModelSerializer):
+    round = serializers.IntegerField(source='schedule.round', read_only=True)
+    sub_round = serializers.IntegerField(source='schedule.sub_round', read_only=True)
+    
+    class Meta:
+        model = GameScore
+        fields = ['id', 'schedule', 'side_1_score', 'side_2_score', 'created_at', 'updated_at', 'completed', 'round', 'sub_round']
+        read_only_fields = ['created_at', 'updated_at'] 

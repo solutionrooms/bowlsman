@@ -137,10 +137,10 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('Unique member user IDs:', uniqueMembers.map(m => m.user));
         setMembers(uniqueMembers);
         
-        // Fetch all users that can be added to the club
+        // Fetch all users that can be added to the club (non-members)
         const usersResponse = await api.get<User[]>('/users/', {
           headers: { Authorization: `Token ${token}` },
-          params: { club_id: clubId }
+          params: { club_id: clubId, show_non_members: 'true' }
         });
         
         console.log('All users fetched:', usersResponse.data);

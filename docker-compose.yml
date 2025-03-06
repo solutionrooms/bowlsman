@@ -11,9 +11,13 @@ services:
       - shared_network
     ports:
       - "3010:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-      - NODE_ENV=production
+      - NODE_ENV=development
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:3000"]
       interval: 60s
