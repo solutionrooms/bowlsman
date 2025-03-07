@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'users',
     'messaging',
+    'social',
     'rest_framework.authtoken',
 ]
 

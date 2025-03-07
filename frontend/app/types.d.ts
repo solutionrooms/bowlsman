@@ -84,4 +84,26 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-} 
+}
+
+interface SocialBowlParticipant {
+  id: number;
+  user: User;
+  joined_at: string;
+}
+
+interface SocialBowl {
+  id: number;
+  title: string;
+  description: string;
+  date: string;
+  time: string;
+  location: string;
+  club: number;
+  created_by: User;
+  created_at: string;
+  updated_at: string;
+  participants: SocialBowlParticipant[];
+  participant_count: number;
+  is_joined: boolean;
+}
