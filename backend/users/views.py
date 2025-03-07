@@ -437,25 +437,133 @@ class CompetitionViewSet(viewsets.ModelViewSet):
     serializer_class = CompetitionSerializer
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+    
+    def retrieve(self, request, *args, **kwargs):
+        logger.info(f"CompetitionViewSet.retrieve called - User: {request.user}, PK: {kwargs.get('pk')}")
+        try:
+            # First check if the competition exists
+            competition_id = self.kwargs.get('pk')
+            try:
+                competition = Competition.objects.get(id=competition_id)
+            except Competition.DoesNotExist:
+                logger.warning(f"Competition {competition_id} not found")
+                return Response(
+                    {"error": "Competition not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+                
+            # Now check if the user has access
+            is_member = ClubUser.objects.filter(user=request.user, club=competition.club).exists()
+            if not is_member and not request.user.is_superuser:
+                logger.warning(f"User {request.user.username} denied access to competition {competition_id}")
+                return Response(
+                    {"error": "You do not have access to this competition"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # If we get here, proceed with the normal flow
+            instance = self.get_object()
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error in CompetitionViewSet.retrieve: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"Failed to retrieve competition: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def get_queryset(self):
+        logger.info(f"CompetitionViewSet.get_queryset - User: {self.request.user}, Action: {self.action}")
+        logger.info(f"Query params: {self.request.query_params}")
+        
         # Get the user's current club (most recently accessed)
         current_club = ClubUser.objects.filter(
             user=self.request.user
         ).order_by('-last_login_at').first()
         
+        # For actions that need to handle a specific competition (retrieve, schedule, etc.)
+        if self.action in ['retrieve', 'schedule'] and self.kwargs.get('pk'):
+            logger.info(f"Handling retrieve or schedule for competition ID: {self.kwargs.get('pk')}")
+            try:
+                competition_id = int(self.kwargs['pk'])
+                logger.info(f"Looking up competition with ID: {competition_id}")
+                competition = Competition.objects.get(id=competition_id)
+                logger.info(f"Found competition: {competition.id} - {competition.name}, Club: {competition.club.id}")
+                
+                # Check if user is a member of the club that owns this competition
+                is_member = ClubUser.objects.filter(user=self.request.user, club=competition.club).exists()
+                logger.info(f"User membership check: is_member={is_member}, is_superuser={self.request.user.is_superuser}")
+                
+                if is_member or self.request.user.is_superuser:
+                    logger.info(f"User has access, returning competition")
+                    return Competition.objects.filter(id=competition_id)
+                else:
+                    # User is not a member of this club
+                    logger.info(f"User is not a member of the club, denying access")
+                    return Competition.objects.none()
+                    
+            except Competition.DoesNotExist:
+                logger.warning(f"Competition {self.kwargs.get('pk')} does not exist")
+                return Competition.objects.none()
+            except ValueError as e:
+                logger.warning(f"Value error when processing competition ID: {str(e)}")
+                return Competition.objects.none()
+            except Exception as e:
+                logger.error(f"Unexpected error in get_queryset: {str(e)}", exc_info=True)
+                return Competition.objects.none()
+        
+        # For list action, show competitions from user's clubs
         # If a current club exists, filter competitions by that club
         if current_club:
+            logger.info(f"Using current club: {current_club.club.id} - {current_club.club.name}")
             queryset = Competition.objects.filter(club=current_club.club)
         else:
             # Fallback: show competitions from all clubs the user is a member of
+            logger.info("No current club, getting competitions from all user's clubs")
             user_clubs = ClubUser.objects.filter(user=self.request.user).values_list('club_id', flat=True)
+            logger.info(f"User clubs: {list(user_clubs)}")
             queryset = Competition.objects.filter(club_id__in=user_clubs)
         
         # Filter by club_id if specified in query params (overrides current club)
         club_id = self.request.query_params.get('club_id')
         if club_id and club_id.isdigit():
+            logger.info(f"Filtering by provided club_id: {club_id}")
             queryset = queryset.filter(club=int(club_id))
+            
+            # Check if user is a member of the specified club
+            is_member = ClubUser.objects.filter(user=self.request.user, club_id=int(club_id)).exists()
+            logger.info(f"User membership in specified club: {is_member}")
+            
+            if not is_member and not self.request.user.is_superuser:
+                logger.warning(f"User is not a member of club {club_id}, returning empty queryset")
+                return Competition.objects.none()
+            
+        # Log ALL competitions in the club before filtering by status
+        club_id = self.request.query_params.get('club_id')
+        if club_id and club_id.isdigit():
+            all_club_competitions = Competition.objects.filter(club=int(club_id))
+            logger.info(f"All competitions in club {club_id} (before status filtering): {[(c.id, c.name, c.status) for c in all_club_competitions]}")
+        
+        # Filter by status if specified
+        status = self.request.query_params.get('status')
+        if status:
+            logger.info(f"Filtering by status: {status}")
+            # Check for any issues with status values
+            competitions_with_status = Competition.objects.filter(status=status)
+            logger.info(f"Total competitions with status '{status}' across all clubs: {competitions_with_status.count()}")
+            
+            # Debug: Check for case sensitivity or whitespace issues
+            all_statuses = Competition.objects.values_list('status', flat=True).distinct()
+            logger.info(f"All unique status values in database: {list(all_statuses)}")
+            
+            # Apply the filter
+            queryset = queryset.filter(status=status)
+        
+        logger.info(f"Final queryset count: {queryset.count()}")
+        if queryset.count() > 0:
+            logger.info(f"Competitions found: {[(c.id, c.name, c.status) for c in queryset]}")
+        else:
+            logger.info("No competitions found matching criteria")
             
         return queryset
 
@@ -767,7 +875,14 @@ class GameScoreViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # Users can only see game scores from clubs they are members of
         user_clubs = ClubUser.objects.filter(user=self.request.user).values_list('club_id', flat=True)
-        return GameScore.objects.filter(schedule__competition__club_id__in=user_clubs)
+        queryset = GameScore.objects.filter(schedule__competition__club_id__in=user_clubs)
+        
+        # Filter by competition if specified
+        competition_id = self.request.query_params.get('competition')
+        if competition_id and competition_id.isdigit():
+            queryset = queryset.filter(schedule__competition_id=int(competition_id))
+            
+        return queryset
     
     def perform_update(self, serializer):
         game_score = serializer.save()

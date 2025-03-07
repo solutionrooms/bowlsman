@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import api from '../../../../src/lib/axios';
 
 interface GameScore {
   id: number;
@@ -41,49 +41,138 @@ interface User {
 
 const ScoringPage = () => {
   const { id } = useParams();
+  const router = useRouter();
   const [competitionData, setCompetitionData] = useState<any>(null);
+  const [availableCompetitions, setAvailableCompetitions] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<CompetitionSchedule[]>([]);
   const [gameScores, setGameScores] = useState<GameScore[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentClub, setCurrentClub] = useState<any>(null);
   
   // Keep track of edited scores
   const [editedScores, setEditedScores] = useState<{
     [key: number]: { side_1_score: number | null; side_2_score: number | null }
   }>({});
 
+  // First, get the user's current club and available competitions
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchClubAndCompetitions = async () => {
       try {
         setLoading(true);
         
-        // Fetch competition data
-        const compResponse = await axios.get(`/api/competitions/${id}/`);
-        setCompetitionData(compResponse.data);
+        // Get current club
+        const userResponse = await api.get('users/me');
+        const club = userResponse.data.current_club;
+        setCurrentClub(club);
         
-        // Fetch schedules for this competition
-        const scheduleResponse = await axios.get(`/api/competition-schedules/?competition=${id}`);
-        setSchedules(scheduleResponse.data);
+        if (!club) {
+          setError('No club selected. Please select a club first.');
+          setLoading(false);
+          return;
+        }
         
-        // Fetch game scores
-        const scoresResponse = await axios.get(`/api/game-scores/?competition=${id}`);
-        setGameScores(scoresResponse.data);
+        console.log(`Fetching competitions for club_id=${club.id} with status=in_progress`);
         
-        // Fetch all users to get names
-        const usersResponse = await axios.get('/api/users/');
-        setUsers(usersResponse.data);
+        // Get in-progress competitions for the current club
+        let inProgressCompetitions = [];
+        try {
+          // Make sure status value has no typos, whitespace or trailing characters
+          const status = "in_progress";
+          // Make sure we don't add a trailing slash in the query parameter
+          const compsResponse = await api.get(`competitions?club_id=${club.id}&status=${status}`);
+          console.log('Raw competition response:', compsResponse.data);
+          
+          // Additional check to filter by status in the frontend (should already be filtered by backend)
+          inProgressCompetitions = compsResponse.data.filter(
+            (comp: any) => comp.status === 'in_progress'
+          );
+          
+          console.log('Filtered in-progress competitions:', inProgressCompetitions);
+        } catch (error) {
+          console.error('Error fetching competitions:', error);
+          setError('Failed to fetch competitions: ' + (error.response?.data?.error || error.message));
+          setLoading(false);
+          return;
+        }
+        
+        setAvailableCompetitions(inProgressCompetitions);
+        
+        if (inProgressCompetitions.length === 0) {
+          setError('No competitions in progress for this club. Start a competition first.');
+          setLoading(false);
+          return;
+        }
+        
+        // If we have an ID in the URL, check if it's valid
+        if (id) {
+          const competitionExists = inProgressCompetitions.some(
+            (comp: any) => comp.id === parseInt(id as string)
+          );
+          
+          if (!competitionExists) {
+            setError(`Competition with ID ${id} is not in progress or doesn't exist in your club.`);
+            setLoading(false);
+            return;
+          }
+        } else if (inProgressCompetitions.length > 0) {
+          // No ID in URL, redirect to the first available competition
+          router.push(`/competition/scoring/${inProgressCompetitions[0].id}`);
+          return;
+        }
         
         setLoading(false);
       } catch (err) {
-        console.error('Error fetching data:', err);
-        setError('Failed to load competition data');
+        console.error('Error fetching club and competitions:', err);
+        setError('Failed to load competitions: ' + (err.response?.data?.error || err.message));
         setLoading(false);
       }
     };
     
-    fetchData();
-  }, [id]);
+    fetchClubAndCompetitions();
+  }, [router]);
+
+  // Then, fetch the specific competition data once we've verified it's valid
+  useEffect(() => {
+    if (!id || !currentClub || availableCompetitions.length === 0 || loading) {
+      return; // Wait until we have verified the ID is valid
+    }
+    
+    const fetchCompetitionData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch competition data
+        const compResponse = await api.get(`competitions/${id}`);
+        setCompetitionData(compResponse.data);
+        
+        // Fetch schedules for this competition
+        const scheduleResponse = await api.get(`competitions/${id}/schedule`);
+        setSchedules(scheduleResponse.data);
+        
+        // Fetch game scores
+        const scoresResponse = await api.get(`game-scores/?competition=${id}`);
+        setGameScores(scoresResponse.data);
+        
+        // Fetch all users to get names
+        const usersResponse = await api.get('users');
+        setUsers(usersResponse.data);
+        
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching competition data:', err);
+        if (err.response) {
+          setError('Failed to load competition data: ' + (err.response.data?.error || err.message));
+        } else {
+          setError('Failed to load competition data: ' + err.message);
+        }
+        setLoading(false);
+      }
+    };
+    
+    fetchCompetitionData();
+  }, [id, currentClub, availableCompetitions, loading]);
   
   const getUserName = (userId: number | null) => {
     if (!userId) return '';
@@ -126,7 +215,7 @@ const ScoringPage = () => {
       const scoreData = editedScores[gameId];
       if (!scoreData) return;
       
-      await axios.patch(`/api/game-scores/${gameId}/`, {
+      await api.patch(`game-scores/${gameId}`, {
         ...scoreData,
         completed: true
       });
@@ -164,7 +253,51 @@ const ScoringPage = () => {
   }, {} as { [key: number]: CompetitionSchedule[] });
   
   if (loading) return <div className="p-4">Loading...</div>;
-  if (error) return <div className="p-4 text-red-500">{error}</div>;
+  
+  if (error) {
+    return (
+      <div className="p-4">
+        <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-red-700">{error}</p>
+              <div className="mt-4">
+                {availableCompetitions.length > 0 ? (
+                  <div>
+                    <p className="text-sm text-gray-700 mb-2">Available competitions:</p>
+                    <div className="space-y-2">
+                      {availableCompetitions.map(comp => (
+                        <button
+                          key={comp.id}
+                          onClick={() => router.push(`/competition/scoring/${comp.id}`)}
+                          className="block w-full text-left px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                          {comp.name} - {comp.status}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => router.push('/competition/manage')}
+                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Back to Competitions
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="p-4">

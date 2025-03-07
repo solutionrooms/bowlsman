@@ -53,10 +53,20 @@ instance.interceptors.request.use((config) => {
       config.url = `api/${config.url}`;
     }
     
-    // Ensure trailing slash for Django
-    if (!config.url.endsWith('/')) {
+    // Ensure trailing slash for Django, but be careful not to add it to query strings
+    // Fix the issue with trailing slashes in query parameters
+    if (!config.url.endsWith('/') && !config.url.includes('?')) {
       config.url = `${config.url}/`;
+    } else if (config.url.includes('?')) {
+      // For URLs with query parameters, ensure the path part has a trailing slash
+      const [path, query] = config.url.split('?', 2);
+      if (!path.endsWith('/')) {
+        config.url = `${path}/?${query}`;
+      }
     }
+    
+    // Log all API requests to console
+    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
   }
 
   return config;
@@ -65,6 +75,13 @@ instance.interceptors.request.use((config) => {
 // Add response interceptor with proper error handling
 instance.interceptors.response.use(
   (response) => {
+    // Log successful responses with full data
+    const method = response.config.method?.toUpperCase();
+    const url = response.config.url;
+    console.group(`API Response (${response.status}): ${method} ${url}`);
+    console.log('Response Data:', response.data);
+    console.log('Full URL:', `${response.config.baseURL}/${url}`);
+    console.groupEnd();
     return response;
   },
   (error) => {

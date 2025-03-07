@@ -183,9 +183,9 @@ export default function Navigation({ onLogout }: NavigationProps) {
                 {currentClub && (
                   <>
                     <Link
-                      href={`/competition/scoring/${currentClub.id}`}
+                      href={`/competition/scoring`}
                       className={`px-3 py-2 rounded-md text-sm font-medium ${
-                        pathname?.startsWith('/competition/scoring/') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                        pathname?.startsWith('/competition/scoring') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
                       }`}
                     >
                       Scoring
@@ -422,9 +422,9 @@ export default function Navigation({ onLogout }: NavigationProps) {
           {currentClub && (
             <>
               <Link
-                href={`/competition/scoring/${currentClub.id}`}
+                href={`/competition/scoring`}
                 className={`block px-3 py-2 rounded-md text-base font-medium ${
-                  pathname?.startsWith('/competition/scoring/') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  pathname?.startsWith('/competition/scoring') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
                 }`}
               >
                 Scoring

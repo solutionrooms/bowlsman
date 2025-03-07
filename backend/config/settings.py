@@ -36,6 +36,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'config.middleware.RequestLoggingMiddleware',  # Add custom middleware for request logging
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -117,11 +118,16 @@ LOGGING = {
     'loggers': {
         'users': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': 'DEBUG',  # Changed from INFO to DEBUG
         },
         'django.request': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': 'DEBUG',  # Changed from INFO to DEBUG
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'DEBUG',  # Added to log database queries
+            'propagate': False,
         },
     },
 } 
