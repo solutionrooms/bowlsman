@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import api from '../../src/lib/axios';
+import { useMessaging } from '../messaging/context/MessagingContext';
 
 interface NavigationProps {
   onLogout: () => void;
@@ -34,6 +35,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
   const [allClubs, setAllClubs] = useState<Club[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const { unreadCount } = useMessaging();
 
   useEffect(() => {
     // Create a flag to prevent multiple calls
@@ -202,11 +204,16 @@ export default function Navigation({ onLogout }: NavigationProps) {
                 </Link>
                 <Link
                   href="/messaging"
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                  className={`relative px-3 py-2 rounded-md text-sm font-medium ${
                     pathname?.startsWith('/messaging') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
                   }`}
                 >
                   Messages
+                  {unreadCount > 0 && (
+                    <span className="ml-1 bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5">
+                      {unreadCount}
+                    </span>
+                  )}
                 </Link>
                 <Link
                   href="/social"
@@ -377,11 +384,16 @@ export default function Navigation({ onLogout }: NavigationProps) {
           </Link>
           <Link
             href="/messaging"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
+            className={`relative block px-3 py-2 rounded-md text-base font-medium ${
               pathname?.startsWith('/messaging') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
             }`}
           >
             Messages
+            {unreadCount > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5">
+                {unreadCount}
+              </span>
+            )}
           </Link>
           <Link
             href="/social"

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { MessagingProvider } from './messaging/context/MessagingContext'
 
 export const metadata: Metadata = {
   title: 'Bowlsman',
@@ -13,7 +14,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <MessagingProvider>
+          {children}
+        </MessagingProvider>
+      </body>
     </html>
   )
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 
 interface Message {
@@ -26,12 +26,18 @@ export default function MessageList({ messages, activeTab, onMarkAsRead }: Messa
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
 
   const handleSelectMessage = (message: Message) => {
-    setSelectedMessage(message);
+    console.log('Message selected:', message);
     
     // Mark as read if unread and in inbox
     if (activeTab === 'inbox' && !message.is_read) {
+      console.log('Calling onMarkAsRead for message:', message.id);
       onMarkAsRead(message.id);
+      // Update the local state immediately for better UX
+      message.is_read = true;
     }
+    
+    // Set the selected message after potentially updating its read status
+    setSelectedMessage(message);
   };
 
   const closeMessage = () => {
@@ -49,6 +55,25 @@ export default function MessageList({ messages, activeTab, onMarkAsRead }: Messa
     );
   }
 
+  // Track if we've seen this message before
+  const [viewedMessages, setViewedMessages] = useState<Record<number, boolean>>({});
+  
+  // Effect to mark message as read when displayed in detail view
+  useEffect(() => {
+    if (selectedMessage && activeTab === 'inbox' && !viewedMessages[selectedMessage.id]) {
+      // Mark that we've seen this message
+      setViewedMessages(prev => ({ ...prev, [selectedMessage.id]: true }));
+      
+      // Only call API if not already marked as read
+      if (!selectedMessage.is_read) {
+        console.log(`Marking message ${selectedMessage.id} as read from detail view`);
+        onMarkAsRead(selectedMessage.id);
+        // Update local state
+        selectedMessage.is_read = true;
+      }
+    }
+  }, [selectedMessage, activeTab, onMarkAsRead, viewedMessages]);
+  
   return (
     <div>
       {selectedMessage ? (
@@ -111,6 +136,8 @@ export default function MessageList({ messages, activeTab, onMarkAsRead }: Messa
                   className={`hover:bg-gray-50 cursor-pointer ${
                     activeTab === 'inbox' && !message.is_read ? 'font-semibold bg-blue-50' : ''
                   }`}
+                  data-message-id={message.id}
+                  data-is-read={message.is_read ? 'true' : 'false'}
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">

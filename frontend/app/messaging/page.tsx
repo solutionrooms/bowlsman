@@ -5,21 +5,50 @@ import api from '../../src/lib/axios';
 import ComposeMessage from './components/ComposeMessage';
 import MessageList from './components/MessageList';
 import Navigation from '../components/Navigation';
+import { useMessaging } from './context/MessagingContext';
 
 interface Club {
   id: number;
   name: string;
 }
 
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  is_staff: boolean;
+  clubs?: Club[];
+}
+
+interface Message {
+  id: number;
+  sender: string;
+  recipient: string;
+  subject: string;
+  content: string;
+  created_at: string;
+  is_read: boolean;
+  sender_name: string;
+  sender_full_name: string;
+  recipient_name: string;
+  recipient_full_name: string;
+  is_club_wide: boolean;
+}
+
+interface UserResponse {
+  user: User;
+  current_club: Club | null;
+}
+
 export default function MessagingPage() {
   const [activeTab, setActiveTab] = useState('inbox');
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showComposeForm, setShowComposeForm] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [clubs, setClubs] = useState<Club[]>([]);
   const [selectedClub, setSelectedClub] = useState<number | null>(null);
+  const { unreadCount, fetchUnreadCount } = useMessaging();
 
   // Use a ref to track initialization status
   const initialLoadRef = useRef(true);
@@ -34,10 +63,13 @@ export default function MessagingPage() {
       initialLoadRef.current = false;
     }
     
+    // Refresh unread count when the messaging page is loaded
+    fetchUnreadCount();
+    
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [fetchUnreadCount]);
   
   // Manual refresh function that can be called directly
   const refreshData = useCallback(() => {
@@ -45,7 +77,7 @@ export default function MessagingPage() {
       fetchMessages(activeTab);
       fetchUnreadCount();
     }
-  }, [activeTab, selectedClub]);
+  }, [activeTab, selectedClub, fetchUnreadCount]);
 
   // Replace the problematic effect with a manual approach that handles cleanup
   useEffect(() => {
@@ -65,17 +97,17 @@ export default function MessagingPage() {
     return () => {
       isMounted = false;
     };
-  }, [activeTab, selectedClub]);
+  }, [activeTab, selectedClub, fetchUnreadCount, refreshData]);
 
   const fetchUserClubs = async (isMounted = true) => {
     try {
-      const response = await api.get('/users/clubs/');
+      const response = await api.get<Club[]>('/users/clubs/');
       if (!isMounted) return;
       
       setClubs(response.data);
       
       // Get user data once
-      const userResponse = await api.get('/users/me/');
+      const userResponse = await api.get<UserResponse>('/users/me/');
       if (!isMounted) return;
       
       let clubToSet = null;
@@ -150,8 +182,8 @@ export default function MessagingPage() {
     setLoading(true);
     setError('');
     try {
-      const endpoint = `/messages/${tab === 'sent' ? 'outbox' : 'inbox'}`;
-      const response = await api.get(endpoint, {
+      const endpoint = tab === 'sent' ? 'messages/outbox' : 'messages/inbox';
+      const response = await api.get<Message[]>(endpoint, {
         params: { club_id: selectedClub }
       });
       setMessages(response.data);
@@ -164,20 +196,6 @@ export default function MessagingPage() {
     }
   };
 
-  const fetchUnreadCount = async () => {
-    if (!selectedClub) return;
-    
-    try {
-      const response = await api.get('/messages/unread/', {
-        params: { club_id: selectedClub }
-      });
-      setUnreadCount(response.data.length);
-    } catch (err) {
-      console.error('Error fetching unread count:', err);
-      setUnreadCount(0);
-    }
-  };
-
   const handleSendMessage = async () => {
     // First hide the form
     setShowComposeForm(false);
@@ -186,28 +204,43 @@ export default function MessagingPage() {
     setTimeout(() => {
       try {
         fetchMessages(activeTab);
+        fetchUnreadCount(); // Refresh unread count after sending a message
       } catch (err) {
         console.error('Error refreshing messages:', err);
       }
-    }, 0);
+    }, 500);
   };
 
   const handleMarkAsRead = async (messageId: number) => {
+    console.log(`Marking message ${messageId} as read...`);
     try {
-      // First update server
-      await api.post(`/messages/${messageId}/mark_as_read/`);
+      // Use our new simplified endpoint with direct path
+      const response = await api.post(`read-message/${messageId}/`);
+      console.log('Mark as read response:', response);
       
-      // Then update local message list state
-      const updatedMessages = messages.map((msg: any) =>
-        msg.id === messageId ? { ...msg, is_read: true } : msg
-      );
-      setMessages(updatedMessages);
+      // Update the message in the local state
+      setMessages(prevMessages => {
+        console.log('Previous messages:', prevMessages);
+        const updatedMessages = prevMessages.map(msg => 
+          msg.id === messageId ? { ...msg, is_read: true } : msg
+        );
+        console.log('Updated messages:', updatedMessages);
+        return updatedMessages;
+      });
       
-      // Update unread count using direct value calculation instead of API call
-      const unreadMessages = updatedMessages.filter((msg: any) => !msg.is_read);
-      setUnreadCount(unreadMessages.length);
-    } catch (err) {
+      // Refresh unread count
+      fetchUnreadCount();
+      
+      return true; // Return success for components that need to know if the operation succeeded
+    } catch (err: any) {
       console.error('Error marking message as read:', err);
+      // Log more details about the error
+      if (err.response) {
+        console.error('Error response:', err.response.data);
+        console.error('Error status:', err.response.status);
+        console.error('Request URL:', err.config?.url);
+      }
+      return false; // Return failure
     }
   };
 

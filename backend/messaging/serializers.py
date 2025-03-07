@@ -38,3 +38,19 @@ class MessageSerializer(serializers.ModelSerializer):
         # Set the sender to the current user
         validated_data['sender'] = self.context['request'].user
         return super().create(validated_data)
+        
+    def update(self, instance, validated_data):
+        # If we're updating is_read, verify permissions
+        if 'is_read' in validated_data and validated_data['is_read']:
+            user = self.context['request'].user
+            # Check if user is recipient or club member for club-wide messages
+            is_recipient = instance.recipient == user
+            is_club_member = False
+            
+            if instance.is_club_wide and hasattr(user, 'club_memberships'):
+                is_club_member = user.club_memberships.filter(club=instance.club).exists()
+                
+            if not (is_recipient or is_club_member):
+                raise serializers.ValidationError("You don't have permission to mark this message as read")
+                
+        return super().update(instance, validated_data)

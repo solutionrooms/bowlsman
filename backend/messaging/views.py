@@ -1,6 +1,6 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from django.db.models import Q
 from django.contrib.auth.models import User
 
@@ -148,13 +148,43 @@ class MessageViewSet(viewsets.ModelViewSet):
         message = self.get_object()
         user = request.user
         
-        # Only allow marking as read if user is the recipient
-        if message.recipient == user or (message.is_club_wide and user.club_memberships.filter(club=message.club).exists()):
-            message.is_read = True
-            message.save()
-            return Response({"status": "message marked as read"})
+        # Check if the user is the recipient or if the message is club-wide and user is a member
+        is_recipient = message.recipient == user
+        is_club_member = message.is_club_wide and hasattr(user, 'club_memberships') and user.club_memberships.filter(club=message.club).exists()
+        
+        if is_recipient or is_club_member:
+            # Only update if not already read to avoid unnecessary DB writes
+            if not message.is_read:
+                message.is_read = True
+                message.save()
+            return Response({"status": "message marked as read", "message_id": message.id})
         else:
-            return Response({"error": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"error": "Not allowed", "message_id": message.id}, status=status.HTTP_403_FORBIDDEN)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def read_message(request, message_id):
+    try:
+        # Get the message
+        message = Message.objects.get(id=message_id)
+        user = request.user
+        
+        # Check if user is recipient or club member for club-wide messages
+        is_recipient = message.recipient == user
+        is_club_member = message.is_club_wide and hasattr(user, 'club_memberships') and user.club_memberships.filter(club=message.club).exists()
+        
+        if not (is_recipient or is_club_member):
+            return Response({"error": "Not authorized to mark this message as read"}, status=status.HTTP_403_FORBIDDEN)
+            
+        # Mark as read
+        message.is_read = True
+        message.save()
+        
+        return Response({"status": "success", "message": "Message marked as read"})
+    except Message.DoesNotExist:
+        return Response({"error": f"Message with ID {message_id} not found"}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ClubMemberViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = UserSerializer
