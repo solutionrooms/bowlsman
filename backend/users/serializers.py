@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile
 
 class ClubSerializer(serializers.ModelSerializer):
     member_count = serializers.SerializerMethodField()
@@ -34,10 +34,11 @@ class UserSerializer(serializers.ModelSerializer):
     search_name = serializers.SerializerMethodField()
     password = serializers.CharField(write_only=True, required=False)
     clubs = serializers.SerializerMethodField()
+    profile_picture = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'is_active', 'is_staff', 'password', 'first_name', 'last_name', 'display_name', 'search_name', 'clubs']
+        fields = ['id', 'username', 'email', 'is_active', 'is_staff', 'password', 'first_name', 'last_name', 'display_name', 'search_name', 'clubs', 'profile_picture']
         extra_kwargs = {
             'password': {'write_only': True},
             'username': {'required': True},
@@ -64,12 +65,23 @@ class UserSerializer(serializers.ModelSerializer):
             for club_user in club_users
         ]
 
+    def get_profile_picture(self, obj):
+        try:
+            profile = obj.profile
+            if profile.profile_picture:
+                return profile.profile_picture.url
+        except UserProfile.DoesNotExist:
+            pass
+        return None
+
     def create(self, validated_data):
         password = validated_data.pop('password', None)
         user = User.objects.create(**validated_data)
         if password:
             user.set_password(password)
             user.save()
+        # Create UserProfile
+        UserProfile.objects.create(user=user)
         return user
 
     def update(self, instance, validated_data):

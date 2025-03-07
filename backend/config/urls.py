@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from django.conf import settings
+from django.conf.urls.static import static
 
 # Only register viewsets that aren't already in users.urls
 router = DefaultRouter()
@@ -15,4 +17,4 @@ urlpatterns = [
     path('api/', include('social.urls')),  # Include the social app URLs
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-] 
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) 

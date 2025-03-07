@@ -33,6 +33,7 @@ services:
       - shared_network
     volumes:
       - ./backend:/app
+      - media_data:/app/media
     ports:
       - "8010:8000"
     environment:
@@ -74,6 +75,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  media_data:
     driver: local
 
 networks:

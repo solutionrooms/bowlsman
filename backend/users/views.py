@@ -12,11 +12,12 @@ from .serializers import (
     CompetitionScheduleSerializer, ClubSerializer, ClubUserSerializer,
     GameScoreSerializer
 )
-from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile
 import logging
 import random
 from .scheduling import create_round_robin_schedule
 from django.db import models, transaction
+from django.core.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -432,6 +433,32 @@ class UserViewSet(viewsets.ModelViewSet):
             'user': UserSerializer(user).data,
             'message': 'Registration successful'
         }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'])
+    def update_profile_picture(self, request):
+        if not request.user.is_authenticated:
+            return Response({'error': 'Not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile_picture = request.FILES.get('profile_picture')
+        if not profile_picture:
+            return Response({'error': 'No profile picture provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Get or create user profile
+            profile, created = UserProfile.objects.get_or_create(user=request.user)
+            
+            # Update profile picture
+            profile.profile_picture = profile_picture
+            profile.save()
+
+            return Response({
+                'profile_picture': profile.profile_picture.url,
+                'message': 'Profile picture updated successfully'
+            })
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class CompetitionViewSet(viewsets.ModelViewSet):
     serializer_class = CompetitionSerializer

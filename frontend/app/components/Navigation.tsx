@@ -190,14 +190,6 @@ export default function Navigation({ onLogout }: NavigationProps) {
                     >
                       Scoring
                     </Link>
-                    <Link
-                      href={`/competition/results/${currentClub.id}`}
-                      className={`px-3 py-2 rounded-md text-sm font-medium ${
-                        pathname?.startsWith('/competition/results/') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                      }`}
-                    >
-                      Results
-                    </Link>
                   </>
                 )}
                 <Link
@@ -256,113 +248,57 @@ export default function Navigation({ onLogout }: NavigationProps) {
                     onClick={() => setClubDropdownOpen(!clubDropdownOpen)}
                     className="flex items-center px-3 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
                   >
-                    <span className="mr-1 text-xs text-blue-300">Club:</span>
                     {currentClub.name}
-                    <svg
-                      className="ml-1 h-4 w-4"
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                        clipRule="evenodd"
-                      />
+                    <svg xmlns="http://www.w3.org/2000/svg" className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
                   {clubDropdownOpen && (
-                    <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
-                      <div className="py-1">
-                        {user?.is_staff ? (
-                          <>
-                            {userClubs.length > 0 && (
-                              <>
-                                <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                  My Clubs
-                                </div>
-                                {userClubs.map((club) => (
-                                  <button
-                                    key={club.id}
-                                    onClick={() => handleClubChange(club.id)}
-                                    className={`block w-full text-left px-4 py-2 text-sm ${
-                                      currentClub?.id === club.id ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-100'
-                                    }`}
-                                  >
-                                    {club.name}
-                                    {club.is_admin && (
-                                      <span className="ml-2 text-xs text-blue-600">(Admin)</span>
-                                    )}
-                                  </button>
-                                ))}
-                                <div className="border-t border-gray-200 my-1"></div>
-                              </>
-                            )}
-                            <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                              All Clubs
-                            </div>
-                            {allClubs
-                              .filter(club => !userClubs.some(uc => uc.id === club.id))
-                              .map((club) => (
-                                <button
-                                  key={club.id}
-                                  onClick={() => handleClubChange(club.id)}
-                                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                >
-                                  {club.name}
-                                </button>
-                              ))}
-                          </>
-                        ) : (
-                          // Regular users only see their clubs
-                          userClubs.map((club) => (
-                            <button
-                              key={club.id}
-                              onClick={() => handleClubChange(club.id)}
-                              className={`block w-full text-left px-4 py-2 text-sm ${
-                                currentClub?.id === club.id ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-100'
-                              }`}
-                            >
-                              {club.name}
-                              {club.is_admin && (
-                                <span className="ml-2 text-xs text-blue-600">(Admin)</span>
-                              )}
-                            </button>
-                          ))
-                        )}
+                    <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                      <div className="py-1" role="menu">
+                        {userClubs.map((club: Club) => (
+                          <button
+                            key={club.id}
+                            onClick={() => handleClubChange(club.id)}
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            role="menuitem"
+                          >
+                            {club.name}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
                 </div>
               )}
-              {/* Profile dropdown */}
+
+              {/* User Menu */}
               <div className="relative">
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                   className="flex items-center px-3 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
                 >
                   {user?.username}
-                  <svg
-                    className="ml-1 h-4 w-4"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                      clipRule="evenodd"
-                    />
+                  <svg xmlns="http://www.w3.org/2000/svg" className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
                 {dropdownOpen && (
-                  <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
-                    <div className="py-1">
+                  <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                    <div className="py-1" role="menu">
+                      <Link
+                        href="/profile"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        role="menuitem"
+                      >
+                        Profile
+                      </Link>
                       <button
                         onClick={handleLogout}
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        role="menuitem"
                       >
-                        Sign out
+                        Logout
                       </button>
                     </div>
                   </div>
@@ -428,14 +364,6 @@ export default function Navigation({ onLogout }: NavigationProps) {
                 }`}
               >
                 Scoring
-              </Link>
-              <Link
-                href={`/competition/results/${currentClub.id}`}
-                className={`block px-3 py-2 rounded-md text-base font-medium ${
-                  pathname?.startsWith('/competition/results/') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                }`}
-              >
-                Results
               </Link>
             </>
           )}

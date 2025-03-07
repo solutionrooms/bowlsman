@@ -1,9 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '../components/Navigation';
 import api from '../../src/lib/axios';
+
+interface ClubUser {
+  id: number;
+  name: string;
+  is_admin: boolean;
+  last_login_at?: string;
+}
 
 interface User {
   id: number;
@@ -11,8 +18,11 @@ interface User {
   email: string;
   first_name: string;
   last_name: string;
+  phone_number?: string;
+  notes?: string;
   is_staff: boolean;
-  clubs: Club[];
+  clubs: ClubUser[];
+  profile_picture?: string;
 }
 
 interface Club {
@@ -22,13 +32,31 @@ interface Club {
   last_login_at?: string;
 }
 
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      img: React.DetailedHTMLProps<React.ImgHTMLAttributes<HTMLImageElement>, HTMLImageElement>;
+      svg: React.DetailedHTMLProps<React.SVGProps<SVGSVGElement>, SVGSVGElement>;
+      path: React.DetailedHTMLProps<React.SVGProps<SVGPathElement>, SVGPathElement>;
+      h2: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+      textarea: React.DetailedHTMLProps<React.TextareaHTMLAttributes<HTMLTextAreaElement>, HTMLTextAreaElement>;
+      span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
+    }
+  }
+}
+
 export default function Profile() {
   const [user, setUser] = useState<User | null>(null);
   const [currentClub, setCurrentClub] = useState<Club | null>(null);
-  const [userClubs, setUserClubs] = useState<Club[]>([]);
+  const [userClubs, setUserClubs] = useState<ClubUser[]>([]);
   const [allClubs, setAllClubs] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedUser, setEditedUser] = useState<User | null>(null);
+  const [profilePicture, setProfilePicture] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -108,6 +136,93 @@ export default function Profile() {
     router.push('/club/manage');
   };
 
+  const handleEdit = () => {
+    setEditedUser({ ...user! });
+    setIsEditing(true);
+  };
+
+  const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please upload an image file');
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image size should be less than 5MB');
+        return;
+      }
+
+      setProfilePicture(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        router.push('/');
+        return;
+      }
+
+      const formData = new FormData();
+      if (editedUser) {
+        Object.entries(editedUser).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && typeof value !== 'object') {
+            formData.append(key, value.toString());
+          }
+        });
+      }
+
+      if (profilePicture) {
+        formData.append('profile_picture', profilePicture);
+      }
+
+      const response = await api.put<User>(
+        '/users/me/',
+        formData,
+        { 
+          headers: { 
+            Authorization: `Token ${token}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+
+      setUser(response.data);
+      setIsEditing(false);
+      setProfilePicture(null);
+      setPreviewUrl(null);
+      setError(null);
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      setError('Failed to update profile. Please try again.');
+    }
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditedUser(null);
+    setError(null);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setEditedUser(prev => prev ? { ...prev, [name]: value } : null);
+  };
+
+  const handleManageClub = (clubId: number) => {
+    router.push(`/club/${clubId}/manage`);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -120,8 +235,8 @@ export default function Profile() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-          <strong className="font-bold">Error!</strong>
-          <span className="block sm:inline"> {error || 'User not found'}</span>
+          <div className="font-bold">Error!</div>
+          <div className="block sm:inline"> {error || 'User not found'}</div>
         </div>
       </div>
     );
@@ -130,99 +245,270 @@ export default function Profile() {
   return (
     <>
       <Navigation onLogout={handleLogout} />
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-white shadow rounded-lg p-6">
-          <h1 className="text-2xl font-bold mb-6">Your Profile</h1>
-          
-          {/* User Information */}
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold mb-4">Account Information</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Username</label>
-                <div className="mt-1 p-2 bg-gray-50 rounded-md">{user?.username}</div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Email</label>
-                <div className="mt-1 p-2 bg-gray-50 rounded-md">{user?.email}</div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Account Type</label>
-                <div className="mt-1 p-2 bg-gray-50 rounded-md">
-                  {user?.is_staff ? 'Administrator' : 'Regular User'}
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="bg-white shadow-xl rounded-2xl overflow-hidden">
+            <div className="px-6 py-8">
+              <div className="flex items-center space-x-4 mb-8">
+                <div className="relative">
+                  <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-200">
+                    {previewUrl || user.profile_picture ? (
+                      <img
+                        src={previewUrl || user.profile_picture}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  {isEditing && (
+                    <label className="absolute bottom-0 right-0 bg-blue-500 text-white p-2 rounded-full cursor-pointer hover:bg-blue-600 transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleProfilePictureChange}
+                        className="hidden"
+                      />
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </label>
+                  )}
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">{user.first_name} {user.last_name}</h2>
+                  <p className="text-gray-600">{user.email}</p>
                 </div>
               </div>
             </div>
-          </div>
-          
-          {/* User's Clubs */}
-          {user?.clubs && user.clubs.length > 0 && (
-            <div className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">Club Membership</h2>
-              <div className="space-y-4">
-                {user.clubs.map(club => (
-                  <div key={club.id} className="flex items-center justify-between bg-gray-50 p-4 rounded">
-                    <div>
-                      <h3 className="font-medium">{club.name}</h3>
-                      <p className="text-sm text-gray-500">
-                        {club.is_admin ? 'Admin' : 'Member'}
-                      </p>
-                    </div>
-                    <div className="space-x-2">
-                      {currentClub?.id !== club.id && (
-                        <button
-                          onClick={() => handleClubChange(club.id)}
-                          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
-                        >
-                          Set as Current
-                        </button>
-                      )}
-                      {currentClub?.id === club.id && (
-                        <span className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded">
-                          Current
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {/* All Clubs (for staff users) */}
-          {user?.is_staff && allClubs.length > 0 && (
-            <div className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">All Clubs (Staff Access)</h2>
-              <div className="space-y-4">
-                {allClubs
-                  .filter(club => !userClubs.some(uc => uc.id === club.id))
-                  .map(club => (
-                    <div key={club.id} className="flex items-center justify-between bg-gray-50 p-4 rounded">
+
+            {/* Main Content */}
+            <div className="p-6 space-y-8">
+              {/* Account Information */}
+              <div className="bg-white rounded-xl border border-gray-100 p-6">
+                <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Account Information
+                </h2>
+                <div className="space-y-6">
+                  {isEditing ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
-                        <h3 className="font-medium">{club.name}</h3>
-                        <p className="text-sm text-gray-500">Not a member</p>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                        <input
+                          type="text"
+                          name="first_name"
+                          value={editedUser?.first_name || ''}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                        />
                       </div>
-                      <div className="space-x-2">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                        <input
+                          type="text"
+                          name="last_name"
+                          value={editedUser?.last_name || ''}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input
+                          type="email"
+                          name="email"
+                          value={editedUser?.email || ''}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                        <input
+                          type="tel"
+                          name="phone_number"
+                          value={editedUser?.phone_number || ''}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                        <textarea
+                          name="notes"
+                          value={editedUser?.notes || ''}
+                          onChange={handleInputChange}
+                          rows={3}
+                          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                        />
+                      </div>
+                      <div className="md:col-span-2 flex justify-end space-x-3">
                         <button
-                          onClick={() => handleClubChange(club.id)}
-                          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
+                          onClick={handleCancel}
+                          className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors duration-200"
                         >
-                          Switch to Club
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSave}
+                          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                        >
+                          Save Changes
                         </button>
                       </div>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">Username</label>
+                        <div className="px-4 py-2 bg-gray-50 rounded-lg text-gray-900">{user?.username}</div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">Full Name</label>
+                        <div className="px-4 py-2 bg-gray-50 rounded-lg text-gray-900">
+                          {user?.first_name} {user?.last_name}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">Email</label>
+                        <div className="px-4 py-2 bg-gray-50 rounded-lg text-gray-900">{user?.email}</div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">Phone Number</label>
+                        <div className="px-4 py-2 bg-gray-50 rounded-lg text-gray-900">
+                          {user?.phone_number || 'Not set'}
+                        </div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-500 mb-1">Notes</label>
+                        <div className="px-4 py-2 bg-gray-50 rounded-lg text-gray-900 whitespace-pre-wrap">
+                          {user?.notes || 'No notes'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* Club Membership */}
+              {user?.clubs && user.clubs.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-100 p-6">
+                  <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                    Club Membership
+                  </h2>
+                  <div className="space-y-4">
+                    {userClubs.map((uc: ClubUser) => (
+                      <div key={uc.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                        <div>
+                          <div className="font-medium text-gray-900">{uc.name}</div>
+                          <div className="text-sm text-gray-500">
+                            {uc.is_admin ? 'Admin' : 'Member'}
+                          </div>
+                        </div>
+                        <div className="space-x-2">
+                          {currentClub?.id !== uc.id && (
+                            <button
+                              onClick={() => handleClubChange(uc.id)}
+                              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                            >
+                              Set as Current
+                            </button>
+                          )}
+                          {currentClub?.id === uc.id && (
+                            <span className="px-4 py-2 bg-green-100 text-green-800 text-sm rounded-lg">
+                              Current Club
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* All Clubs (for staff users) */}
+              {user?.is_staff && allClubs.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-100 p-6">
+                  <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                    All Clubs (Staff Access)
+                  </h2>
+                  <div className="space-y-4">
+                    {allClubs
+                      .filter((club: Club) => !userClubs.some(uc => uc.id === club.id))
+                      .map((club: Club) => (
+                        <div key={club.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                          <div>
+                            <div className="font-medium text-gray-900">{club.name}</div>
+                            <div className="text-sm text-gray-500">Not a member</div>
+                          </div>
+                          <div className="space-x-2">
+                            <button
+                              onClick={() => handleClubChange(club.id)}
+                              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                            >
+                              Switch to Club
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Manage Clubs Button */}
+              <div className="flex justify-end">
+                <button
+                  onClick={handleManageClubs}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Manage Clubs
+                </button>
+              </div>
+
+              {/* Club Management Section */}
+              {user?.is_staff && (
+                <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                  <h2 className="text-xl font-semibold mb-4">Club Management</h2>
+                  <div className="space-y-4">
+                    {userClubs.map((uc: ClubUser) => (
+                      <div key={uc.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                        <div>
+                          <h3 className="font-medium">{uc.name}</h3>
+                          <p className="text-sm text-gray-500">
+                            {uc.is_admin ? 'Admin' : 'Member'} • Last login: {uc.last_login_at ? new Date(uc.last_login_at).toLocaleDateString() : 'Never'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleManageClub(uc.id)}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors duration-200"
+                        >
+                          Manage
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-          
-          <div className="flex justify-end">
-            <button
-              onClick={handleManageClubs}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-            >
-              Manage Clubs
-            </button>
           </div>
         </div>
       </div>
