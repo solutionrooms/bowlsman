@@ -8,19 +8,14 @@ class SocialBowlParticipantInline(admin.TabularInline):
 
 @admin.register(SocialBowl)
 class SocialBowlAdmin(admin.ModelAdmin):
-    list_display = ['title', 'date', 'time', 'club', 'created_by', 'participant_count']
-    list_filter = ['date', 'club']
-    search_fields = ['title', 'description', 'location']
-    date_hierarchy = 'date'
+    list_display = ('title', 'notice_type', 'club', 'created_by', 'created_at')
+    list_filter = ('notice_type', 'club', 'created_at')
+    search_fields = ('title', 'description')
+    readonly_fields = ('created_at', 'updated_at')
     inlines = [SocialBowlParticipantInline]
-    
-    def participant_count(self, obj):
-        return obj.participants.count()
-    participant_count.short_description = 'Participants'
 
 @admin.register(SocialBowlParticipant)
 class SocialBowlParticipantAdmin(admin.ModelAdmin):
-    list_display = ['user', 'social_bowl', 'joined_at']
-    list_filter = ['joined_at', 'social_bowl__club']
-    search_fields = ['user__username', 'user__email', 'social_bowl__title']
-    raw_id_fields = ['user', 'social_bowl']
+    list_display = ('user', 'social_bowl', 'joined_at')
+    list_filter = ('social_bowl__notice_type', 'joined_at')
+    search_fields = ('user__username', 'social_bowl__title')

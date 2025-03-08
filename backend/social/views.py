@@ -10,14 +10,14 @@ from users.models import ClubUser
 
 class IsClubMemberOrReadOnly(permissions.BasePermission):
     """
-    Custom permission to only allow club members to create social bowls.
+    Custom permission to only allow club members to create notices.
     """
     def has_permission(self, request, view):
         # Read permissions are allowed to any request
         if request.method in permissions.SAFE_METHODS:
             return True
         
-        # Only allow club members to create social bowls
+        # Only allow club members to create notices
         if 'club' in request.data:
             club_id = request.data.get('club')
             return ClubUser.objects.filter(user=request.user, club_id=club_id).exists()
@@ -35,7 +35,7 @@ class IsClubMemberOrReadOnly(permissions.BasePermission):
 
 class SocialBowlViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for social bowling sessions.
+    API endpoint for noticeboard notices.
     """
     serializer_class = SocialBowlSerializer
     permission_classes = [permissions.IsAuthenticated, IsClubMemberOrReadOnly]
@@ -48,18 +48,24 @@ class SocialBowlViewSet(viewsets.ModelViewSet):
         if club_id:
             queryset = queryset.filter(club_id=club_id)
         
-        # Only show future social bowls by default
-        show_past = self.request.query_params.get('show_past', False)
-        if not show_past:
-            today = timezone.now().date()
-            queryset = queryset.filter(
-                Q(date__gt=today) | 
-                Q(date=today, time__gte=timezone.now().time())
-            )
+        # Filter by notice type if specified
+        notice_type = self.request.query_params.get('notice_type', None)
+        if notice_type:
+            queryset = queryset.filter(notice_type=notice_type)
+        
+        # Only show future social bowls by default if filtering for social_bowl type
+        if notice_type == 'social_bowl':
+            show_past = self.request.query_params.get('show_past', False)
+            if not show_past:
+                today = timezone.now().date()
+                queryset = queryset.filter(
+                    Q(date__gt=today) | 
+                    Q(date=today, time__gte=timezone.now().time())
+                )
         
         # Filter by user participation
-        my_bowls = self.request.query_params.get('my_bowls', False)
-        if my_bowls:
+        my_notices = self.request.query_params.get('my_notices', False)
+        if my_notices:
             queryset = queryset.filter(participants__user=self.request.user)
         
         return queryset
@@ -68,6 +74,13 @@ class SocialBowlViewSet(viewsets.ModelViewSet):
     def join(self, request, pk=None):
         """Join a social bowling session."""
         social_bowl = self.get_object()
+        
+        # Only allow joining social bowl notices
+        if social_bowl.notice_type != 'social_bowl':
+            return Response(
+                {"detail": "You can only join social bowling notices."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Check if user is a member of the club
         is_member = ClubUser.objects.filter(
@@ -107,6 +120,13 @@ class SocialBowlViewSet(viewsets.ModelViewSet):
     def leave(self, request, pk=None):
         """Leave a social bowling session."""
         social_bowl = self.get_object()
+        
+        # Only allow leaving social bowl notices
+        if social_bowl.notice_type != 'social_bowl':
+            return Response(
+                {"detail": "You can only leave social bowling notices."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Check if user is a participant
         participant = SocialBowlParticipant.objects.filter(

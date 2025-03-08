@@ -31,10 +31,10 @@ const pageDescriptions = {
   manageClubs: "Manage club settings, members, and activities as a club administrator.",
   clubDetails: "View detailed information about a specific club.",
   
-  // Social
-  social: "Connect with other bowlers and participate in social bowling events.",
-  createSocialBowl: "Create a new social bowling event and invite participants.",
-  socialDetails: "View details about a specific social bowling event.",
+  // Noticeboard
+  noticeboard: "View and post notices including social bowling events, general announcements, and items for sale.",
+  createNotice: "Create a new notice to share with other club members.",
+  noticeDetails: "View details about a specific notice.",
   
   // Messaging
   messaging: "Send and receive messages with other bowlers, clubs, and league administrators.",

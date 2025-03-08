@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import SocialBowlViewSet
 
 router = DefaultRouter()
-router.register(r'social-bowls', SocialBowlViewSet, basename='social-bowl')
+router.register(r'notices', SocialBowlViewSet, basename='notice')
 
 urlpatterns = [
     path('', include(router.urls)),

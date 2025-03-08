@@ -21,28 +21,29 @@ class SocialBowlParticipantSerializer(serializers.ModelSerializer):
 
 class SocialBowlSerializer(serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)
-    participants = SocialBowlParticipantSerializer(many=True, read_only=True)
     participant_count = serializers.SerializerMethodField()
-    is_joined = serializers.SerializerMethodField()
+    is_participant = serializers.SerializerMethodField()
+    participants = SocialBowlParticipantSerializer(many=True, read_only=True)
     
     class Meta:
         model = SocialBowl
         fields = [
-            'id', 'title', 'description', 'date', 'time', 'location',
-            'club', 'created_by', 'created_at', 'updated_at', 
-            'participants', 'participant_count', 'is_joined'
+            'id', 'title', 'description', 'notice_type', 'date', 'time', 
+            'location', 'price', 'club', 'created_by', 'created_at', 
+            'updated_at', 'participant_count', 'is_participant', 'participants'
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at', 'created_by']
     
     def get_participant_count(self, obj):
         return obj.participants.count()
     
-    def get_is_joined(self, obj):
+    def get_is_participant(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
+        if request and hasattr(request, 'user'):
             return obj.participants.filter(user=request.user).exists()
         return False
     
     def create(self, validated_data):
-        validated_data['created_by'] = self.context['request'].user
+        request = self.context.get('request')
+        validated_data['created_by'] = request.user
         return super().create(validated_data)
