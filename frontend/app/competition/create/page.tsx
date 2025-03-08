@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '../../components/Navigation';
+import PageHeading from '../../components/PageHeading';
+import pageDescriptions from '../../utils/pageDescriptions';
 import api from '../../../src/lib/axios';
 
 interface User {
@@ -124,7 +126,11 @@ export default function CreateCompetition() {
       <div className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md mx-auto">
           <div className="bg-white shadow rounded-lg p-6">
-            <h1 className="text-2xl font-bold mb-6">Create New Competition</h1>
+            <PageHeading 
+              title="Create New Competition" 
+              infoText={pageDescriptions.createCompetition}
+              className="text-2xl font-bold mb-6"
+            />
             
             <form onSubmit={handleSubmit}>
               <div className="mb-4">

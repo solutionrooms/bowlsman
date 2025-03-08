@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams } from 'next/navigation';
+import PageHeading from '../../../components/PageHeading';
+import pageDescriptions from '../../../utils/pageDescriptions';
 
 interface GameScore {
   id: number;
@@ -117,9 +119,11 @@ const ResultsPage = () => {
   
   return (
     <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">
-        {competitionData?.name || 'Competition'} - Results
-      </h1>
+      <PageHeading 
+        title={`${competitionData?.name || 'Competition'} - Results`}
+        infoText={pageDescriptions.competitionResults}
+        className="text-2xl font-bold mb-4"
+      />
       
       {Object.entries(roundGroups).map(([round, roundSchedules]) => (
         <div key={round} className="mb-8">

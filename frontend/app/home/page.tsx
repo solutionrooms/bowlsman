@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '../components/Navigation';
+import PageHeading from '../components/PageHeading';
+import pageDescriptions from '../utils/pageDescriptions';
 import api from '../../src/lib/axios';
 
 interface User {
@@ -67,7 +69,11 @@ export default function Home() {
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <h2 className="text-2xl font-bold mb-4">Welcome, {user.username}!</h2>
+            <PageHeading 
+              title={`Welcome, ${user.username}!`} 
+              infoText={pageDescriptions.home}
+              className="text-2xl font-bold mb-4"
+            />
             <div className="mt-4">
               <p className="text-gray-600">Email: {user.email}</p>
               <p className="text-gray-600">Role: {user.is_staff ? 'Admin' : 'User'}</p>
@@ -76,7 +82,10 @@ export default function Home() {
           
           {/* Welcome Message */}
           <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <h2 className="text-2xl font-bold mb-4">About Bowlsman</h2>
+            <PageHeading 
+              title="About Bowlsman" 
+              className="text-2xl font-bold mb-4"
+            />
             <p className="text-gray-700 mb-4">
               Bowlsman is your all-in-one platform for managing bowling competitions and tournaments. 
               Whether you're organizing a casual league or a professional tournament, our app helps you 
@@ -90,7 +99,11 @@ export default function Home() {
           
           {/* Getting Started Steps */}
           <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-2xl font-bold mb-4">Getting Started</h2>
+            <PageHeading 
+              title="Getting Started" 
+              infoText="Follow these steps to get started with Bowlsman and create your first competition."
+              className="text-2xl font-bold mb-4"
+            />
             <div className="space-y-4">
               <div className="flex">
                 <div className="flex-shrink-0">

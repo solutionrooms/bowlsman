@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '../../../src/lib/axios';
 import Navigation from '../../components/Navigation';
+import PageHeading from '../../components/PageHeading';
+import pageDescriptions from '../../utils/pageDescriptions';
+import Link from 'next/link';
 
 interface Club {
   id: number;
@@ -159,7 +162,11 @@ export default function ScoringSelectionPage() {
     <div className="min-h-screen bg-gray-100">
       <Navigation onLogout={handleLogout} />
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-2xl font-bold mb-6">Competition Scoring</h1>
+        <PageHeading 
+          title="Competition Scoring" 
+          infoText={pageDescriptions.competitionScoring}
+          className="text-2xl font-bold mb-6"
+        />
         
         {error && (
           <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">

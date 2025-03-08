@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { EllipsisVerticalIcon, XMarkIcon as XIcon, Bars3Icon as GripVerticalIcon } from '@heroicons/react/24/solid';
 import Navigation from '../../components/Navigation';
+import PageHeading from '../../components/PageHeading';
+import pageDescriptions from '../../utils/pageDescriptions';
 import api from '../../../src/lib/axios';
 import { notification } from 'antd';
 import React from 'react';
@@ -549,7 +551,10 @@ export default function ManageCompetitions() {
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white shadow rounded-lg p-6">
             <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold">Manage Competitions</h1>
+              <PageHeading 
+                title="Manage Competitions" 
+                infoText={pageDescriptions.competitions}
+              />
               <div className="flex items-center space-x-4">
                 {userClubs.length > 1 && (
                   <div>
