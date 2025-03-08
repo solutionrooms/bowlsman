@@ -5,13 +5,37 @@ import { useRouter } from 'next/navigation';
 import api from '../../../src/lib/axios';
 import Navigation from '../../components/Navigation';
 
+interface Club {
+  id: number;
+  name: string;
+  is_admin: boolean;
+}
+
+interface Competition {
+  id: number;
+  name: string;
+  status: string;
+  num_players: number;
+  players: any[];
+}
+
+interface UserData {
+  current_club: Club | null;
+  clubs: Club[];
+  user: {
+    id: number;
+    username: string;
+    email: string;
+  };
+}
+
 export default function ScoringSelectionPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [inProgressCompetitions, setInProgressCompetitions] = useState<any[]>([]);
-  const [userClubs, setUserClubs] = useState<any[]>([]);
-  const [currentClub, setCurrentClub] = useState<any>(null);
+  const [inProgressCompetitions, setInProgressCompetitions] = useState<Competition[]>([]);
+  const [userClubs, setUserClubs] = useState<Club[]>([]);
+  const [currentClub, setCurrentClub] = useState<Club | null>(null);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -23,32 +47,37 @@ export default function ScoringSelectionPage() {
     const fetchUserData = async () => {
       try {
         setLoading(true);
+        setError(null); // Clear any previous errors
         
         // Get user data including clubs
-        const userResponse = await api.get('users/me');
-        const { current_club, clubs } = userResponse.data;
+        const userResponse = await api.get<UserData>('users/me');
+        const userData = userResponse.data;
+        const current_club = userData.current_club;
+        const clubs = userData.clubs || [];
         
-        setUserClubs(clubs || []);
+        setUserClubs(clubs);
         setCurrentClub(current_club);
         
         if (current_club) {
-          // Get competitions for the current club
-          const compsResponse = await api.get(`competitions?club_id=${current_club.id}&status=in_progress`);
-          const competitions = compsResponse.data.filter(
-            (comp: any) => comp.status === 'in_progress'
-          );
+          // Get competitions for the current club - include all statuses
+          const compsResponse = await api.get<Competition[]>(`competitions?club_id=${current_club.id}`);
           
+          // Get all competitions for the club
+          const competitions = compsResponse.data;
+          
+          console.log('Fetched competitions:', competitions);
           setInProgressCompetitions(competitions);
           
-          // If there's only one competition in progress, redirect directly to it
-          if (competitions.length === 1) {
-            router.push(`/competition/scoring/${competitions[0].id}`);
-            return;
+          if (competitions.length === 0) {
+            console.log('No competitions found for this club');
           }
+        } else {
+          console.log('No current club selected');
+          setError('Please select a club to view competitions');
         }
         
         setLoading(false);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error fetching user data:', err);
         setError('Failed to load user data: ' + (err.response?.data?.error || err.message));
         setLoading(false);
@@ -66,28 +95,52 @@ export default function ScoringSelectionPage() {
       await api.put('club-users/set_current_club', { club_id: clubId });
       
       // Reload competitions for the selected club
-      const compsResponse = await api.get(`competitions?club_id=${clubId}&status=in_progress`);
-      const competitions = compsResponse.data.filter(
-        (comp: any) => comp.status === 'in_progress'
-      );
+      const compsResponse = await api.get<Competition[]>(`competitions?club_id=${clubId}`);
+      
+      // Get all competitions for the club
+      const competitions = compsResponse.data;
       
       setInProgressCompetitions(competitions);
       
       // Find and set the current club in state
       const selectedClub = userClubs.find(club => club.id === clubId);
-      setCurrentClub(selectedClub);
-      
-      // If there's only one competition in progress, redirect directly to it
-      if (competitions.length === 1) {
-        router.push(`/competition/scoring/${competitions[0].id}`);
-        return;
+      if (selectedClub) {
+        setCurrentClub(selectedClub);
       }
       
       setLoading(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error changing club:', err);
       setError('Failed to change club: ' + (err.response?.data?.error || err.message));
       setLoading(false);
+    }
+  };
+
+  // Helper function to get status badge color
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case 'in_progress':
+        return 'bg-green-100 text-green-800';
+      case 'completed':
+        return 'bg-blue-100 text-blue-800';
+      case 'scheduled':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // Helper function to format status for display
+  const formatStatus = (status: string) => {
+    switch (status) {
+      case 'in_progress':
+        return 'In Progress';
+      case 'completed':
+        return 'Completed';
+      case 'scheduled':
+        return 'Scheduled';
+      default:
+        return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
     }
   };
 
@@ -157,7 +210,7 @@ export default function ScoringSelectionPage() {
               <h2 className="text-lg font-medium text-gray-900 mb-4">
                 {inProgressCompetitions.length > 0
                   ? 'Select Competition'
-                  : 'No Active Competitions'}
+                  : 'No Competitions Found'}
               </h2>
               
               {inProgressCompetitions.length > 0 ? (
@@ -172,11 +225,11 @@ export default function ScoringSelectionPage() {
                         <div>
                           <h3 className="text-lg font-medium text-gray-900">{comp.name}</h3>
                           <p className="mt-1 text-sm text-gray-500">
-                            Players: {comp.players.length} / {comp.num_players}
+                            Players: {comp.players?.length || 0} / {comp.num_players}
                           </p>
                         </div>
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          In Progress
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeColor(comp.status)}`}>
+                          {formatStatus(comp.status)}
                         </span>
                       </div>
                     </button>
@@ -187,9 +240,9 @@ export default function ScoringSelectionPage() {
                   <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No competitions in progress</h3>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">No competitions found</h3>
                   <p className="mt-1 text-sm text-gray-500">
-                    Start a competition in the Competitions page first.
+                    Create a competition in the Competitions page first.
                   </p>
                   <div className="mt-6">
                     <button

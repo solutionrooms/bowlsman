@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import api from '../../../../src/lib/axios';
+import Navigation from '../../../components/Navigation';
 
 interface GameScore {
   id: number;
-  competition_schedule: number;
+  schedule: number;
   side_1_score: number | null;
   side_2_score: number | null;
   completed: boolean;
@@ -37,131 +38,125 @@ interface User {
   email: string;
   first_name: string;
   last_name: string;
+  clubs?: UserClub[];
+}
+
+interface UserClub {
+  id: number;
+  name: string;
+  is_admin: boolean;
+}
+
+interface Competition {
+  id: number;
+  name: string;
+  status: string;
+  creator: number;
+  num_players: number;
+  players: any[];
 }
 
 const ScoringPage = () => {
   const { id } = useParams();
   const router = useRouter();
-  const [competitionData, setCompetitionData] = useState<any>(null);
-  const [availableCompetitions, setAvailableCompetitions] = useState<any[]>([]);
+  const [competitionData, setCompetitionData] = useState<Competition | null>(null);
+  const [availableCompetitions, setAvailableCompetitions] = useState<Competition[]>([]);
   const [schedules, setSchedules] = useState<CompetitionSchedule[]>([]);
   const [gameScores, setGameScores] = useState<GameScore[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentClub, setCurrentClub] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [canEditScores, setCanEditScores] = useState(true);
+  const [currentClub, setCurrentClub] = useState<UserClub | null>(null);
   
   // Keep track of edited scores
   const [editedScores, setEditedScores] = useState<{
     [key: number]: { side_1_score: number | null; side_2_score: number | null }
   }>({});
 
-  // First, get the user's current club and available competitions
-  useEffect(() => {
-    const fetchClubAndCompetitions = async () => {
-      try {
-        setLoading(true);
-        
-        // Get current club
-        const userResponse = await api.get('users/me');
-        const club = userResponse.data.current_club;
-        setCurrentClub(club);
-        
-        if (!club) {
-          setError('No club selected. Please select a club first.');
-          setLoading(false);
-          return;
-        }
-        
-        console.log(`Fetching competitions for club_id=${club.id} with status=in_progress`);
-        
-        // Get in-progress competitions for the current club
-        let inProgressCompetitions = [];
-        try {
-          // Make sure status value has no typos, whitespace or trailing characters
-          const status = "in_progress";
-          // Make sure we don't add a trailing slash in the query parameter
-          const compsResponse = await api.get(`competitions?club_id=${club.id}&status=${status}`);
-          console.log('Raw competition response:', compsResponse.data);
-          
-          // Additional check to filter by status in the frontend (should already be filtered by backend)
-          inProgressCompetitions = compsResponse.data.filter(
-            (comp: any) => comp.status === 'in_progress'
-          );
-          
-          console.log('Filtered in-progress competitions:', inProgressCompetitions);
-        } catch (error) {
-          console.error('Error fetching competitions:', error);
-          setError('Failed to fetch competitions: ' + (error.response?.data?.error || error.message));
-          setLoading(false);
-          return;
-        }
-        
-        setAvailableCompetitions(inProgressCompetitions);
-        
-        if (inProgressCompetitions.length === 0) {
-          setError('No competitions in progress for this club. Start a competition first.');
-          setLoading(false);
-          return;
-        }
-        
-        // If we have an ID in the URL, check if it's valid
-        if (id) {
-          const competitionExists = inProgressCompetitions.some(
-            (comp: any) => comp.id === parseInt(id as string)
-          );
-          
-          if (!competitionExists) {
-            setError(`Competition with ID ${id} is not in progress or doesn't exist in your club.`);
-            setLoading(false);
-            return;
-          }
-        } else if (inProgressCompetitions.length > 0) {
-          // No ID in URL, redirect to the first available competition
-          router.push(`/competition/scoring/${inProgressCompetitions[0].id}`);
-          return;
-        }
-        
-        setLoading(false);
-      } catch (err) {
-        console.error('Error fetching club and competitions:', err);
-        setError('Failed to load competitions: ' + (err.response?.data?.error || err.message));
-        setLoading(false);
-      }
-    };
-    
-    fetchClubAndCompetitions();
-  }, [router]);
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('currentClub');
+    router.push('/');
+  };
 
-  // Then, fetch the specific competition data once we've verified it's valid
+  // Simplified data fetching to avoid race conditions
   useEffect(() => {
-    if (!id || !currentClub || availableCompetitions.length === 0 || loading) {
-      return; // Wait until we have verified the ID is valid
-    }
+    let isComponentMounted = true;
     
-    const fetchCompetitionData = async () => {
+    const fetchAllData = async () => {
       try {
         setLoading(true);
+        setError(null); // Clear any previous errors
         
-        // Fetch competition data
-        const compResponse = await api.get(`competitions/${id}`);
-        setCompetitionData(compResponse.data);
+        // Get user data
+        const userResponse = await api.get<{user: User; current_club: UserClub}>('/users/me/');
+        if (!isComponentMounted) return;
+        
+        const userData = userResponse.data;
+        setCurrentUser(userData.user);
+        setCurrentClub(userData.current_club);
+        
+        if (!id) {
+          setError('No competition ID provided');
+          setLoading(false);
+          return;
+        }
+        
+        // Fetch competition details
+        console.log(`Fetching competition data for ID: ${id}`);
+        const compResponse = await api.get<Competition>(`competitions/${id}`);
+        if (!isComponentMounted) return;
+        
+        const competition = compResponse.data;
+        console.log('Competition data:', competition);
+        setCompetitionData(competition);
+        
+        // Check permissions
+        const isCompetitionOrganizer = competition.creator === userData.user.id;
+        const isClubAdmin = userData.user.clubs?.some(
+          club => club.id === userData.current_club?.id && club.is_admin
+        );
+        
+        console.log('User is club admin:', isClubAdmin);
+        console.log('User is competition organizer:', isCompetitionOrganizer);
+        setCanEditScores(isClubAdmin || isCompetitionOrganizer);
         
         // Fetch schedules for this competition
-        const scheduleResponse = await api.get(`competitions/${id}/schedule`);
+        const scheduleResponse = await api.get<CompetitionSchedule[]>(`competitions/${id}/schedule`);
+        if (!isComponentMounted) return;
+        
+        if (scheduleResponse.data.length === 0) {
+          setError(`No schedule found for this competition. Please create a schedule first.`);
+          setLoading(false);
+          return;
+        }
+        
         setSchedules(scheduleResponse.data);
         
         // Fetch game scores
-        const scoresResponse = await api.get(`game-scores/?competition=${id}`);
+        const scoresResponse = await api.get<GameScore[]>(`game-scores/?competition=${id}`);
+        if (!isComponentMounted) return;
+        
+        if (scoresResponse.data.length === 0) {
+          setError(`No scores found. This competition may not have been started yet.`);
+          setLoading(false);
+          return;
+        }
+        
         setGameScores(scoresResponse.data);
         
         // Fetch all users to get names
-        const usersResponse = await api.get('users');
+        const usersResponse = await api.get<User[]>('users');
+        if (!isComponentMounted) return;
         setUsers(usersResponse.data);
         
         setLoading(false);
-      } catch (err) {
-        console.error('Error fetching competition data:', err);
+      } catch (err: any) {
+        console.error('Error fetching data:', err);
+        if (!isComponentMounted) return;
+        
         if (err.response) {
           setError('Failed to load competition data: ' + (err.response.data?.error || err.message));
         } else {
@@ -171,9 +166,13 @@ const ScoringPage = () => {
       }
     };
     
-    fetchCompetitionData();
-  }, [id, currentClub, availableCompetitions, loading]);
-  
+    fetchAllData();
+    
+    return () => {
+      isComponentMounted = false;
+    };
+  }, [id]);
+
   const getUserName = (userId: number | null) => {
     if (!userId) return '';
     const user = users.find(u => u.id === userId);
@@ -199,18 +198,30 @@ const ScoringPage = () => {
   };
   
   const handleScoreChange = (gameId: number, side: 'side_1_score' | 'side_2_score', value: string) => {
+    // We'll still log a warning if somehow a user without permission tries to edit
+    if (!canEditScores) {
+      console.warn('User does not have permission to edit scores');
+      return;
+    }
+    
     const numValue = value === '' ? null : parseInt(value, 10);
     
     setEditedScores(prev => ({
       ...prev,
       [gameId]: {
-        ...prev[gameId],
+        ...(prev[gameId] || {}),
         [side]: numValue
       }
     }));
   };
   
   const commitScore = async (gameId: number) => {
+    // We'll still log a warning if somehow a user without permission tries to commit
+    if (!canEditScores) {
+      console.warn('User does not have permission to edit scores');
+      return;
+    }
+    
     try {
       const scoreData = editedScores[gameId];
       if (!scoreData) return;
@@ -236,10 +247,35 @@ const ScoringPage = () => {
       delete newEditedScores[gameId];
       setEditedScores(newEditedScores);
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error committing score:', err);
       setError('Failed to commit score');
     }
+  };
+  
+  // Add a function to increment/decrement scores
+  const adjustScore = (gameId: number, side: 'side_1_score' | 'side_2_score', adjustment: number) => {
+    if (!canEditScores) {
+      console.warn('User does not have permission to edit scores');
+      return;
+    }
+    
+    // Get current score value
+    const currentScore = editedScores[gameId]?.[side] ?? 
+                         gameScores.find(gs => gs.id === gameId)?.[side] ?? 
+                         0;
+    
+    // Calculate new score (don't allow negative scores)
+    const newScore = Math.max(0, (currentScore || 0) + adjustment);
+    
+    // Update the score
+    setEditedScores(prev => ({
+      ...prev,
+      [gameId]: {
+        ...(prev[gameId] || {}),
+        [side]: newScore
+      }
+    }));
   };
   
   // Group schedules by round
@@ -251,46 +287,33 @@ const ScoringPage = () => {
     groups[round].push(schedule);
     return groups;
   }, {} as { [key: number]: CompetitionSchedule[] });
-  
-  if (loading) return <div className="p-4">Loading...</div>;
-  
-  if (error) {
+
+  if (error && !loading) {
     return (
-      <div className="p-4">
-        <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
+      <div className="min-h-screen bg-gray-100">
+        <Navigation onLogout={handleLogout} />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Competition Scoring</h1>
+            <div className="mt-2 flex items-center">
+              <button
+                onClick={() => router.push('/competition/scoring')}
+                className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                ← Back to Competitions
+              </button>
             </div>
-            <div className="ml-3">
-              <p className="text-sm text-red-700">{error}</p>
-              <div className="mt-4">
-                {availableCompetitions.length > 0 ? (
-                  <div>
-                    <p className="text-sm text-gray-700 mb-2">Available competitions:</p>
-                    <div className="space-y-2">
-                      {availableCompetitions.map(comp => (
-                        <button
-                          key={comp.id}
-                          onClick={() => router.push(`/competition/scoring/${comp.id}`)}
-                          className="block w-full text-left px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                        >
-                          {comp.name} - {comp.status}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => router.push('/competition/manage')}
-                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    Back to Competitions
-                  </button>
-                )}
+          </div>
+          
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
               </div>
             </div>
           </div>
@@ -298,96 +321,187 @@ const ScoringPage = () => {
       </div>
     );
   }
-  
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <Navigation onLogout={handleLogout} />
+        <div className="flex justify-center items-center min-h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">
-        {competitionData?.name || 'Competition'} - Scoring
-      </h1>
-      
-      {Object.entries(roundGroups).map(([round, roundSchedules]) => (
-        <div key={round} className="mb-8">
-          <h2 className="text-xl font-semibold mb-2">Round {round}</h2>
-          
-          <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border border-gray-300">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="px-4 py-2 border">Match</th>
-                  <th className="px-4 py-2 border">Team 1</th>
-                  <th className="px-4 py-2 border">Score</th>
-                  <th className="px-4 py-2 border">Team 2</th>
-                  <th className="px-4 py-2 border">Score</th>
-                  <th className="px-4 py-2 border">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roundSchedules.map(schedule => {
-                  const gameScore = gameScores.find(
-                    gs => gs.competition_schedule === schedule.id
-                  );
-                  
-                  if (!gameScore) return null;
-                  
-                  const team1Name = getTeamName(schedule, 1);
-                  const team2Name = getTeamName(schedule, 2);
-                  const isEdited = !!editedScores[gameScore.id];
-                  
-                  return (
-                    <tr key={schedule.id} className={gameScore.completed ? "bg-green-50" : ""}>
-                      <td className="px-4 py-2 border">
-                        {schedule.sub_round > 0 ? `${schedule.sub_round}` : ''}
-                      </td>
-                      <td className="px-4 py-2 border">{team1Name}</td>
-                      <td className="px-4 py-2 border">
-                        {gameScore.completed ? (
-                          gameScore.side_1_score
-                        ) : (
-                          <input
-                            type="number"
-                            className="w-20 px-2 py-1 border rounded"
-                            value={editedScores[gameScore.id]?.side_1_score ?? gameScore.side_1_score ?? ''}
-                            onChange={(e) => handleScoreChange(gameScore.id, 'side_1_score', e.target.value)}
-                            disabled={gameScore.completed}
-                          />
-                        )}
-                      </td>
-                      <td className="px-4 py-2 border">{team2Name}</td>
-                      <td className="px-4 py-2 border">
-                        {gameScore.completed ? (
-                          gameScore.side_2_score
-                        ) : (
-                          <input
-                            type="number"
-                            className="w-20 px-2 py-1 border rounded"
-                            value={editedScores[gameScore.id]?.side_2_score ?? gameScore.side_2_score ?? ''}
-                            onChange={(e) => handleScoreChange(gameScore.id, 'side_2_score', e.target.value)}
-                            disabled={gameScore.completed}
-                          />
-                        )}
-                      </td>
-                      <td className="px-4 py-2 border">
-                        {!gameScore.completed && (
-                          <button
-                            className={`px-3 py-1 rounded ${isEdited ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
-                            onClick={() => commitScore(gameScore.id)}
-                            disabled={!isEdited}
-                          >
-                            Commit
-                          </button>
-                        )}
-                        {gameScore.completed && (
-                          <span className="text-green-600">Completed</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+    <div className="min-h-screen bg-gray-100">
+      <Navigation onLogout={handleLogout} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Competition Scoring</h1>
+          <div className="mt-2 flex items-center">
+            <button
+              onClick={() => router.push('/competition/scoring')}
+              className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              ← Back to Competitions
+            </button>
+            {competitionData && (
+              <span className="ml-4 text-gray-500">
+                {competitionData.name}
+              </span>
+            )}
           </div>
         </div>
-      ))}
+        
+        {error && (
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {!canEditScores && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  You are in view-only mode. Only club administrators and competition organizers can edit scores.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {Object.entries(roundGroups).map(([round, roundSchedules]) => (
+          <div key={round} className="mb-8">
+            <h2 className="text-xl font-semibold mb-2">Round {round}</h2>
+            
+            <div className="overflow-x-auto">
+              <table className="min-w-full bg-white border border-gray-300">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="px-4 py-2 border">Match</th>
+                    <th className="px-4 py-2 border">Team 1</th>
+                    <th className="px-4 py-2 border">Score</th>
+                    <th className="px-4 py-2 border">Team 2</th>
+                    <th className="px-4 py-2 border">Score</th>
+                    <th className="px-4 py-2 border">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roundSchedules.map(schedule => {
+                    const gameScore = gameScores.find(
+                      gs => gs.schedule === schedule.id
+                    );
+                    
+                    if (!gameScore) return null;
+                    
+                    const team1Name = getTeamName(schedule, 1);
+                    const team2Name = getTeamName(schedule, 2);
+                    const isEdited = !!editedScores[gameScore.id];
+                    
+                    return (
+                      <tr key={schedule.id} className={gameScore.completed ? "bg-green-50" : ""}>
+                        <td className="px-4 py-2 border">
+                          {schedule.sub_round > 0 ? `${schedule.sub_round}` : ''}
+                        </td>
+                        <td className="px-4 py-2 border">{team1Name}</td>
+                        <td className="px-4 py-2 border">
+                          {gameScore.completed ? (
+                            gameScore.side_1_score
+                          ) : (
+                            <div className="flex items-center space-x-1">
+                              <button 
+                                className="w-6 h-6 flex items-center justify-center bg-red-100 text-red-700 rounded hover:bg-red-200"
+                                onClick={() => adjustScore(gameScore.id, 'side_1_score', -1)}
+                                disabled={!canEditScores || gameScore.completed}
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                className="w-16 px-2 py-1 border rounded text-center"
+                                value={editedScores[gameScore.id]?.side_1_score ?? gameScore.side_1_score ?? ''}
+                                onChange={(e) => handleScoreChange(gameScore.id, 'side_1_score', e.target.value)}
+                                disabled={!canEditScores || gameScore.completed}
+                              />
+                              <button 
+                                className="w-6 h-6 flex items-center justify-center bg-green-100 text-green-700 rounded hover:bg-green-200"
+                                onClick={() => adjustScore(gameScore.id, 'side_1_score', 1)}
+                                disabled={!canEditScores || gameScore.completed}
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 border">{team2Name}</td>
+                        <td className="px-4 py-2 border">
+                          {gameScore.completed ? (
+                            gameScore.side_2_score
+                          ) : (
+                            <div className="flex items-center space-x-1">
+                              <button 
+                                className="w-6 h-6 flex items-center justify-center bg-red-100 text-red-700 rounded hover:bg-red-200"
+                                onClick={() => adjustScore(gameScore.id, 'side_2_score', -1)}
+                                disabled={!canEditScores || gameScore.completed}
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                className="w-16 px-2 py-1 border rounded text-center"
+                                value={editedScores[gameScore.id]?.side_2_score ?? gameScore.side_2_score ?? ''}
+                                onChange={(e) => handleScoreChange(gameScore.id, 'side_2_score', e.target.value)}
+                                disabled={!canEditScores || gameScore.completed}
+                              />
+                              <button 
+                                className="w-6 h-6 flex items-center justify-center bg-green-100 text-green-700 rounded hover:bg-green-200"
+                                onClick={() => adjustScore(gameScore.id, 'side_2_score', 1)}
+                                disabled={!canEditScores || gameScore.completed}
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 border">
+                          {!gameScore.completed && canEditScores && (
+                            <button
+                              className={`px-3 py-1 rounded ${isEdited ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+                              onClick={() => commitScore(gameScore.id)}
+                              disabled={!isEdited}
+                            >
+                              Commit
+                            </button>
+                          )}
+                          {gameScore.completed && (
+                            <span className="text-green-600">Completed</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
