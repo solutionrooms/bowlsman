@@ -46,7 +46,7 @@ services:
         condition: service_healthy
 
   bowlsman-postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     networks:
       - shared_network
     environment:
