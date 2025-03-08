@@ -8,10 +8,9 @@ const getApiUrl = () => {
     return nextDataUrl;
   }
   
-  // Fallback to process.env, ensure it's HTTP
+  // Fallback to process.env, maintain original protocol (HTTP or HTTPS)
   const envUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010';
-  const httpUrl = envUrl.replace('https://', 'http://');
-  return httpUrl;
+  return envUrl;
 };
 
 const apiUrl = getApiUrl();
