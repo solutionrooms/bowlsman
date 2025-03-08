@@ -296,6 +296,16 @@ export default function Home() {
           >
             {isLogin ? 'Need an account? Register' : 'Already have an account? Login'}
           </button>
+          {isLogin && (
+            <div className="mt-2">
+              <button
+                onClick={() => router.push('/reset-password')}
+                className="text-blue-500 hover:underline"
+              >
+                Forgot your password?
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

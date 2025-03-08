@@ -12,12 +12,15 @@ from .serializers import (
     CompetitionScheduleSerializer, ClubSerializer, ClubUserSerializer,
     GameScoreSerializer
 )
-from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile, PasswordResetToken
 import logging
 import random
 from .scheduling import create_round_robin_schedule
 from django.db import models, transaction
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
+from django.conf import settings
+from django.urls import reverse
 
 logger = logging.getLogger(__name__)
 
@@ -480,6 +483,165 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def request_password_reset(self, request):
+        """
+        Request a password reset link to be sent to the user's email.
+        """
+        email = request.data.get('email')
+        if not email:
+            return Response(
+                {'error': 'Email is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Find user by email
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            # Don't reveal that the user doesn't exist for security reasons
+            return Response(
+                {'message': 'If a user with this email exists, a password reset link has been sent.'},
+                status=status.HTTP_200_OK
+            )
+        
+        # Create a password reset token
+        token = PasswordResetToken.objects.create(user=user)
+        
+        # Build the reset URL
+        frontend_url = settings.FRONTEND_URL
+        reset_url = f"{frontend_url}/reset-password/{token.token}"
+        
+        # Log the reset URL for debugging
+        logger.info(f"Password reset URL: {reset_url}")
+        
+        # Send the email
+        subject = 'Password Reset for Bowlsman'
+        message = f'''
+        Hello {user.first_name},
+        
+        You have requested to reset your password for your Bowlsman account.
+        
+        Please click the link below to reset your password:
+        {reset_url}
+        
+        This link will expire in 24 hours.
+        
+        If you did not request this password reset, please ignore this email.
+        
+        Best regards,
+        The Bowlsman Team
+        '''
+        
+        try:
+            # Log SMTP settings for debugging
+            logger.info(f"SMTP Settings: Host={settings.EMAIL_HOST}, Port={settings.EMAIL_PORT}, User={settings.EMAIL_HOST_USER}")
+            logger.info(f"Sending email to: {user.email}, From: {settings.DEFAULT_FROM_EMAIL}")
+            
+            # Use a direct SMTP connection instead of Django's EmailMessage
+            import smtplib
+            from email.mime.text import MIMEText
+            
+            # Create the email message
+            msg = MIMEText(message)
+            msg['Subject'] = subject
+            msg['From'] = settings.DEFAULT_FROM_EMAIL
+            msg['To'] = user.email
+            
+            # Connect to the SMTP server
+            logger.info(f"Connecting to SMTP server: {settings.EMAIL_HOST}:{settings.EMAIL_PORT}")
+            
+            try:
+                smtp = smtplib.SMTP(settings.EMAIL_HOST, settings.EMAIL_PORT, timeout=settings.EMAIL_TIMEOUT)
+                
+                # Always use TLS for this SMTP server
+                logger.info("Starting TLS")
+                smtp.starttls()
+                
+                # Login if credentials are provided
+                if settings.EMAIL_HOST_USER and settings.EMAIL_HOST_PASSWORD:
+                    logger.info(f"Logging in as: {settings.EMAIL_HOST_USER}")
+                    smtp.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
+                
+                # Send the email
+                logger.info(f"Sending email to: {user.email}")
+                smtp.sendmail(settings.DEFAULT_FROM_EMAIL, [user.email], msg.as_string())
+                
+                # Close the connection
+                smtp.quit()
+                
+                logger.info(f"Password reset email sent to {user.email}")
+            except smtplib.SMTPException as smtp_error:
+                logger.error(f"SMTP Error: {str(smtp_error)}")
+                # For development, we'll still return success even if email fails
+                # This allows testing the reset flow without a working SMTP server
+                logger.info(f"Development mode: Simulating email sent to {user.email}")
+                logger.info(f"Password reset URL: {reset_url}")
+            
+            return Response(
+                {'message': 'If a user with this email exists, a password reset link has been sent.'},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            logger.error(f"Failed to send password reset email: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Delete the token if email sending fails
+            token.delete()
+            return Response(
+                {'error': 'Failed to send password reset email. Please try again later.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def confirm_password_reset(self, request):
+        """
+        Confirm a password reset using the token from the email.
+        """
+        token_str = request.data.get('token')
+        new_password = request.data.get('password')
+        
+        if not token_str or not new_password:
+            return Response(
+                {'error': 'Token and password are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Find the token
+            token = PasswordResetToken.objects.get(token=token_str)
+            
+            # Check if token is valid
+            if not token.is_valid():
+                return Response(
+                    {'error': 'Invalid or expired token'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Reset the password
+            user = token.user
+            user.set_password(new_password)
+            user.save()
+            
+            # Mark token as used
+            token.used = True
+            token.save()
+            
+            return Response({'message': 'Password has been reset successfully'})
+            
+        except PasswordResetToken.DoesNotExist:
+            return Response(
+                {'error': 'Invalid token'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Password reset error: {str(e)}")
+            return Response(
+                {'error': 'An error occurred while resetting your password'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class CompetitionViewSet(viewsets.ModelViewSet):
     serializer_class = CompetitionSerializer

@@ -84,6 +84,21 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Email Configuration
+# Use SMTP for testing
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.environ.get('SMTP_HOST')
+EMAIL_PORT = int(os.environ.get('SMTP_PORT', 587))
+EMAIL_HOST_USER = os.environ.get('SMTP_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('SMTP_PASS')
+EMAIL_USE_TLS = os.environ.get('SMTP_SSL', 'false').lower() != 'false'
+DEFAULT_FROM_EMAIL = os.environ.get('SMTP_SENDER')
+EMAIL_TIMEOUT = 30  # Timeout in seconds
+
+# Uncomment to use console backend instead
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# DEFAULT_FROM_EMAIL = 'noreply@bowlsman.example.com'
+
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -103,6 +118,14 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3010",
     "http://localhost:8010",  # Add port 8010 for API docs
 ]
+
+# Frontend URL for password reset links
+# In development, use localhost
+# In production, use the production URL
+if DEBUG:
+    FRONTEND_URL = "http://localhost:3010"
+else:
+    FRONTEND_URL = "https://bowlsman.fridaydigital.co.uk"
 
 CORS_ALLOW_CREDENTIALS = True
 

@@ -2,6 +2,9 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import FileExtensionValidator
 from django.core.exceptions import ValidationError
+import uuid
+from django.utils import timezone
+import datetime
 
 def validate_image_size(value):
     filesize = value.size
@@ -150,3 +153,22 @@ class GameScore(models.Model):
         
     def __str__(self):
         return f"{self.schedule} - {self.side_1_score} vs {self.side_2_score}"
+
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_tokens')
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            # Token expires after 24 hours
+            self.expires_at = timezone.now() + datetime.timedelta(hours=24)
+        super().save(*args, **kwargs)
+
+    def is_valid(self):
+        return not self.used and self.expires_at > timezone.now()
+
+    def __str__(self):
+        return f"Password reset token for {self.user.username}"
