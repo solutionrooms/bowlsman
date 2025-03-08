@@ -195,6 +195,14 @@ export default function Navigation({ onLogout }: NavigationProps) {
                   </>
                 )}
                 <Link
+                  href="/leagues"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    pathname?.startsWith('/leagues') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Leagues
+                </Link>
+                <Link
                   href="/bowlers"
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
                     pathname === '/bowlers' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
@@ -374,6 +382,14 @@ export default function Navigation({ onLogout }: NavigationProps) {
               </Link>
             </>
           )}
+          <Link
+            href="/leagues"
+            className={`block px-3 py-2 rounded-md text-base font-medium ${
+              pathname?.startsWith('/leagues') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+            }`}
+          >
+            Leagues
+          </Link>
           <Link
             href="/bowlers"
             className={`block px-3 py-2 rounded-md text-base font-medium ${

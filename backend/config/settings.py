@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'users',
     'messaging',
     'social',
+    'leagues',
     'rest_framework.authtoken',
 ]
 

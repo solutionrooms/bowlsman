@@ -154,9 +154,21 @@ class ClubUserViewSet(viewsets.ModelViewSet):
         
         # Users can only see their own memberships or memberships in clubs they administer
         admin_clubs = ClubUser.objects.filter(user=self.request.user, is_admin=True).values_list('club_id', flat=True)
-        return ClubUser.objects.filter(
+        queryset = ClubUser.objects.filter(
             models.Q(user=self.request.user) | models.Q(club_id__in=admin_clubs)
         )
+        
+        # Filter by club_id if provided
+        club_id = self.request.query_params.get('club_id')
+        if club_id:
+            queryset = queryset.filter(club_id=club_id)
+            
+        return queryset.select_related('user', 'club')
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['include_full_user_data'] = True
+        return context
 
     @action(detail=False, methods=['post', 'put'])
     def set_current_club(self, request):
@@ -291,14 +303,23 @@ class UserViewSet(viewsets.ModelViewSet):
             club_users = ClubUser.objects.filter(user=request.user).order_by('-last_login_at')
             
             if club_users.exists():
-                current_club = ClubSerializer(club_users.first().club).data
+                # Get the first club user (most recently logged in)
+                club_user = club_users.first()
+                
+                # Create current_club with is_admin field included
+                current_club = ClubSerializer(club_user.club).data
+                current_club['is_admin'] = club_user.is_admin
                 
                 # Set current club in session if not already set
                 if 'current_club_id' not in request.session:
-                    request.session['current_club_id'] = club_users.first().club.id
+                    request.session['current_club_id'] = club_user.club.id
                 
-            # Get all clubs the user is a member of
-            clubs = [ClubSerializer(cu.club).data for cu in club_users]
+            # Get all clubs the user is a member of with is_admin field
+            clubs = []
+            for cu in club_users:
+                club_data = ClubSerializer(cu.club).data
+                club_data['is_admin'] = cu.is_admin
+                clubs.append(club_data)
                 
             return Response({
                 'user': serializer.data,

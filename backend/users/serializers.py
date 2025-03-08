@@ -16,6 +16,7 @@ class ClubSerializer(serializers.ModelSerializer):
 class ClubUserSerializer(serializers.ModelSerializer):
     user_details = serializers.SerializerMethodField()
     club_name = serializers.CharField(source='club.name', read_only=True)
+    user = serializers.SerializerMethodField()
 
     class Meta:
         model = ClubUser
@@ -28,6 +29,25 @@ class ClubUserSerializer(serializers.ModelSerializer):
             'username': obj.user.username,
             'display_name': f"{obj.user.first_name} {obj.user.last_name}" if obj.user.first_name or obj.user.last_name else obj.user.username
         }
+        
+    def get_user(self, obj):
+        # Check if we should include full user data
+        include_full = self.context.get('include_full_user_data', False)
+        
+        if include_full:
+            # Return full user data with display_name and search_name
+            return {
+                'id': obj.user.id,
+                'username': obj.user.username,
+                'email': obj.user.email,
+                'first_name': obj.user.first_name,
+                'last_name': obj.user.last_name,
+                'display_name': f"{obj.user.first_name} {obj.user.last_name} ({obj.user.username})" if obj.user.first_name or obj.user.last_name else obj.user.username,
+                'search_name': f"{obj.user.first_name} {obj.user.last_name} {obj.user.username}".lower()
+            }
+        else:
+            # Just return the user ID for reference
+            return obj.user.id
 
 class UserSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()

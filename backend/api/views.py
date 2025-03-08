@@ -112,6 +112,70 @@ class ClubListView(APIView):
         
         return Response(clubs)
 
+class ClubAdminStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        # Get the club ID from query parameters
+        club_id = request.query_params.get('club_id')
+        
+        if not club_id:
+            return Response({"error": "club_id parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Check if user is admin for this club
+            club_user = ClubUser.objects.get(user=request.user, club_id=club_id)
+            
+            # Return admin status
+            return Response({
+                "club_id": int(club_id),
+                "is_admin": club_user.is_admin,
+                "username": request.user.username
+            })
+            
+        except ClubUser.DoesNotExist:
+            return Response({
+                "club_id": int(club_id),
+                "is_admin": False,
+                "error": "User is not a member of this club",
+                "username": request.user.username
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    def post(self, request):
+        # This endpoint allows setting admin status
+        # Only staff users can use this endpoint
+        if not request.user.is_staff:
+            return Response({"error": "Only staff users can set admin status"}, status=status.HTTP_403_FORBIDDEN)
+        
+        club_id = request.data.get('club_id')
+        user_id = request.data.get('user_id')
+        is_admin = request.data.get('is_admin', True)
+        
+        if not club_id or not user_id:
+            return Response({"error": "club_id and user_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get the club user
+            club_user = ClubUser.objects.get(user_id=user_id, club_id=club_id)
+            
+            # Update admin status
+            club_user.is_admin = is_admin
+            club_user.save()
+            
+            return Response({
+                "club_id": int(club_id),
+                "user_id": int(user_id),
+                "is_admin": club_user.is_admin,
+                "username": club_user.user.username
+            })
+            
+        except ClubUser.DoesNotExist:
+            return Response({
+                "error": "User is not a member of this club",
+                "club_id": int(club_id),
+                "user_id": int(user_id)
+            }, status=status.HTTP_404_NOT_FOUND)
+
 class ClubCreateView(APIView):
     permission_classes = [IsAuthenticated]
     
