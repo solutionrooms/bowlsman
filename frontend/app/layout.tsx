@@ -3,7 +3,7 @@ import './globals.css'
 import { MessagingProvider } from './messaging/context/MessagingContext'
 
 export const metadata: Metadata = {
-  title: 'Bowlsman',
+  title: 'BowlsHub',
   description: 'Bowling competition management system',
 }
 

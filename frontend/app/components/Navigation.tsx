@@ -203,7 +203,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <Link href="/home" className="text-xl font-bold">
-                Bowlsman
+                BowlsHub
               </Link>
             </div>
           </div>
@@ -212,14 +212,6 @@ export default function Navigation({ onLogout }: NavigationProps) {
           <div className="hidden md:flex items-center justify-between flex-1 ml-6">
             {/* Main Navigation Links */}
             <div className="flex items-center space-x-2">
-              <Link
-                href="/home"
-                className={`px-3 py-2 rounded-md text-sm font-medium ${
-                  pathname === '/home' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                }`}
-              >
-                Dashboard
-              </Link>
               <Link
                 href="/competition/manage"
                 className={`px-3 py-2 rounded-md text-sm font-medium ${
@@ -244,7 +236,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
                   pathname?.startsWith('/leagues') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
                 }`}
               >
-                Leagues
+                Teams
               </Link>
               <Link
                 href="/bowlers"
@@ -308,8 +300,8 @@ export default function Navigation({ onLogout }: NavigationProps) {
                     onClick={() => toggleDropdown(setClubDropdownOpen)}
                     className="flex items-center px-3 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
                   >
-                    {currentClub.name}
-                    <svg xmlns="http://www.w3.org/2000/svg" className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <span className="max-w-[150px] truncate">{currentClub.name}</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="ml-2 h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
@@ -383,8 +375,8 @@ export default function Navigation({ onLogout }: NavigationProps) {
                   onClick={() => toggleDropdown(setMobileClubOpen)}
                   className="flex items-center px-2 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
                 >
-                  {currentClub.name.length > 10 ? `${currentClub.name.substring(0, 10)}...` : currentClub.name}
-                  <svg xmlns="http://www.w3.org/2000/svg" className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <span className="max-w-[100px] truncate">{currentClub.name}</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="ml-1 h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
@@ -478,14 +470,6 @@ export default function Navigation({ onLogout }: NavigationProps) {
       <div className={`${isOpen ? 'block' : 'hidden'} md:hidden`}>
         <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
           <Link
-            href="/home"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname === '/home' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Dashboard
-          </Link>
-          <Link
             href="/competition/manage"
             className={`block px-3 py-2 rounded-md text-base font-medium ${
               pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
@@ -509,7 +493,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
               pathname?.startsWith('/leagues') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
             }`}
           >
-            Leagues
+            Teams
           </Link>
           <Link
             href="/bowlers"
