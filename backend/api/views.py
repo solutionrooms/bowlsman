@@ -272,6 +272,7 @@ class ClubMembersView(APIView):
                     'first_name': member.user.first_name,
                     'last_name': member.user.last_name,
                     'is_admin': member.is_admin,
+                    'club_role': member.club_role,
                     'last_login_at': member.last_login_at
                 })
             
@@ -297,6 +298,7 @@ class ClubMembersView(APIView):
                             'first_name': member.user.first_name,
                             'last_name': member.user.last_name,
                             'is_admin': member.is_admin,
+                            'club_role': member.club_role,
                             'last_login_at': member.last_login_at
                         })
                     
@@ -317,6 +319,7 @@ class ClubMembersView(APIView):
             # Get user to add
             username = request.data.get('username')
             is_admin = request.data.get('is_admin', False)
+            club_role = request.data.get('club_role', '')
             
             if not username:
                 return Response({'error': 'Username is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -335,6 +338,7 @@ class ClubMembersView(APIView):
                 user=user_to_add,
                 club_id=club_id,
                 is_admin=is_admin,
+                club_role=club_role,
                 last_login_at=None
             )
             
@@ -346,6 +350,7 @@ class ClubMembersView(APIView):
                 'first_name': user_to_add.first_name,
                 'last_name': user_to_add.last_name,
                 'is_admin': club_user.is_admin,
+                'club_role': club_user.club_role,
                 'last_login_at': club_user.last_login_at
             }, status=status.HTTP_201_CREATED)
             
@@ -359,6 +364,7 @@ class ClubMembersView(APIView):
                     # Get user to add
                     username = request.data.get('username')
                     is_admin = request.data.get('is_admin', False)
+                    club_role = request.data.get('club_role', '')
                     
                     if not username:
                         return Response({'error': 'Username is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -377,6 +383,7 @@ class ClubMembersView(APIView):
                         user=user_to_add,
                         club_id=club_id,
                         is_admin=is_admin,
+                        club_role=club_role,
                         last_login_at=None
                     )
                     
@@ -388,6 +395,7 @@ class ClubMembersView(APIView):
                         'first_name': user_to_add.first_name,
                         'last_name': user_to_add.last_name,
                         'is_admin': club_user.is_admin,
+                        'club_role': club_user.club_role,
                         'last_login_at': club_user.last_login_at
                     }, status=status.HTTP_201_CREATED)
                 except Club.DoesNotExist:
@@ -465,7 +473,13 @@ class ClubMemberDetailView(APIView):
             is_admin = request.data.get('is_admin')
             if is_admin is not None:
                 member.is_admin = is_admin
-                member.save()
+                
+            # Update club role
+            club_role = request.data.get('club_role')
+            if club_role is not None:
+                member.club_role = club_role
+                
+            member.save()
             
             return Response({
                 'id': member.id,
@@ -475,6 +489,7 @@ class ClubMemberDetailView(APIView):
                 'first_name': member.user.first_name,
                 'last_name': member.user.last_name,
                 'is_admin': member.is_admin,
+                'club_role': member.club_role,
                 'last_login_at': member.last_login_at
             })
             
@@ -495,7 +510,13 @@ class ClubMemberDetailView(APIView):
                     is_admin = request.data.get('is_admin')
                     if is_admin is not None:
                         member.is_admin = is_admin
-                        member.save()
+                        
+                    # Update club role
+                    club_role = request.data.get('club_role')
+                    if club_role is not None:
+                        member.club_role = club_role
+                        
+                    member.save()
                     
                     return Response({
                         'id': member.id,
@@ -505,6 +526,7 @@ class ClubMemberDetailView(APIView):
                         'first_name': member.user.first_name,
                         'last_name': member.user.last_name,
                         'is_admin': member.is_admin,
+                        'club_role': member.club_role,
                         'last_login_at': member.last_login_at
                     })
                 except Club.DoesNotExist:

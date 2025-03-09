@@ -8,13 +8,36 @@ import pageDescriptions from '../utils/pageDescriptions';
 import api from '../../src/lib/axios';
 
 interface User {
+  id: number;
   username: string;
   email: string;
   is_staff: boolean;
+  is_superuser: boolean;
+  club_memberships?: ClubUser[];
+}
+
+interface Club {
+  id: number;
+  name: string;
+}
+
+interface ClubUser {
+  id: number;
+  club: number;
+  club_name: string;
+  is_admin: boolean;
+  club_role: string;
+}
+
+interface UserResponse {
+  user: User;
+  current_club: Club | null;
 }
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
+  const [currentClub, setCurrentClub] = useState<Club | null>(null);
+  const [clubMembership, setClubMembership] = useState<ClubUser | null>(null);
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
@@ -38,11 +61,22 @@ export default function Home() {
     const fetchUser = async () => {
       try {
         console.log('Fetching user details');
-        const response = await api.get<User>('/users/me/', {
+        const response = await api.get<UserResponse>('/users/me/', {
           headers: { Authorization: `Token ${token}` }
         });
         
-        setUser(response.data);
+        setUser(response.data.user);
+        setCurrentClub(response.data.current_club);
+        
+        // If we have a current club, find the user's membership for that club
+        if (response.data.current_club && response.data.user.club_memberships) {
+          const membership = response.data.user.club_memberships.find(
+            m => m.club === response.data.current_club?.id
+          );
+          setClubMembership(membership || null);
+        }
+        
+        console.log('User data:', response.data);
       } catch (error) {
         console.error('Error fetching user:', error);
         localStorage.removeItem('token');
@@ -77,6 +111,27 @@ export default function Home() {
             <div className="mt-4">
               <p className="text-gray-600">Email: {user.email}</p>
               <p className="text-gray-600">Role: {user.is_staff ? 'Admin' : 'User'}</p>
+              
+              {/* Debug Information */}
+              {currentClub && (
+                <p className="text-gray-600">Current Club: {currentClub.name}</p>
+              )}
+              
+              {user?.is_staff && (
+                <p className="text-gray-600">Staff: Yes</p>
+              )}
+              
+              {user?.is_superuser && (
+                <p className="text-gray-600">Superuser: Yes</p>
+              )}
+              
+              {clubMembership?.is_admin && (
+                <p className="text-gray-600">Club Admin: Yes</p>
+              )}
+              
+              {currentClub && (
+                <p className="text-gray-600">Club Role: {clubMembership?.club_role || "Player"}</p>
+              )}
             </div>
           </div>
           
@@ -95,81 +150,6 @@ export default function Home() {
               With Bowlsman, you can easily add players to your competitions, create round-robin schedules, 
               replace players when needed, and keep everything organized in one place.
             </p>
-          </div>
-          
-          {/* Getting Started Steps */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <PageHeading 
-              title="Getting Started" 
-              infoText="Follow these steps to get started with Bowlsman and create your first competition."
-              className="text-2xl font-bold mb-4"
-            />
-            <div className="space-y-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-indigo-600 text-white">
-                    1
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-lg font-medium text-gray-900">Create a Competition</h3>
-                  <p className="mt-1 text-gray-500">
-                    Start by creating a new competition. Set the number of players, rule set, and other parameters.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-indigo-600 text-white">
-                    2
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-lg font-medium text-gray-900">Add Players</h3>
-                  <p className="mt-1 text-gray-500">
-                    Add registered users or guest players to your competition. You can manage and reorder players as needed.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-indigo-600 text-white">
-                    3
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-lg font-medium text-gray-900">Generate Schedule</h3>
-                  <p className="mt-1 text-gray-500">
-                    Once your competition is full, generate a round-robin schedule. You can customize the number of rounds and parallel matches.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-indigo-600 text-white">
-                    4
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-lg font-medium text-gray-900">Manage Your Competition</h3>
-                  <p className="mt-1 text-gray-500">
-                    View schedules, replace players if needed, and keep track of your competition all in one place.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="mt-6">
-                <a 
-                  href="/competition/create" 
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  Create Your First Competition
-                </a>
-              </div>
-            </div>
           </div>
         </div>
       </main>

@@ -38,9 +38,18 @@ class Club(models.Model):
         return self.name
 
 class ClubUser(models.Model):
+    ROLE_CHOICES = [
+        ('', 'No Role'),
+        ('President', 'President'),
+        ('Vice-President', 'Vice-President'),
+        ('Treasurer', 'Treasurer'),
+        ('Secretary', 'Secretary'),
+    ]
+    
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='club_memberships')
     club = models.ForeignKey(Club, on_delete=models.CASCADE, related_name='members')
     is_admin = models.BooleanField(default=False)
+    club_role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_login_at = models.DateTimeField(null=True, blank=True)
 

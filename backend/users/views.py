@@ -72,6 +72,7 @@ class ClubViewSet(viewsets.ModelViewSet):
         user_id = request.data.get('user_id')
         username = request.data.get('username')
         is_admin = request.data.get('is_admin', False)
+        club_role = request.data.get('club_role', '')
         
         if not user_id and not username:
             return Response(
@@ -95,7 +96,8 @@ class ClubViewSet(viewsets.ModelViewSet):
             club_user = ClubUser.objects.create(
                 user=user, 
                 club=club,
-                is_admin=is_admin
+                is_admin=is_admin,
+                club_role=club_role
             )
             
             return Response(

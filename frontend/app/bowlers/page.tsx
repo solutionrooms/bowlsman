@@ -12,11 +12,24 @@ interface Bowler {
   last_name: string;
   email?: string;
   avatar?: string;
+  is_admin?: boolean;
+  club_role?: string;
   // Will add these fields later
   // phone_number?: string;
   // average?: number;
   // games_played?: number;
   // high_score?: number;
+}
+
+interface UserResponse {
+  user: {
+    id: number;
+    username: string;
+  };
+  current_club: {
+    id: number;
+    name: string;
+  } | null;
 }
 
 export default function Bowlers() {
@@ -48,26 +61,49 @@ export default function Bowlers() {
       
       // First, get the current club
       try {
-        const userResponse = await api.get('/users/me/', {
+        const userResponse = await api.get<UserResponse>('/users/me/', {
           headers: { Authorization: `Token ${token}` }
         });
         
         if (userResponse.data.current_club) {
           setCurrentClub(userResponse.data.current_club);
+          const clubId = userResponse.data.current_club.id;
           
           // Then fetch club members
-          const membersResponse = await api.get(`/users/?club_id=${userResponse.data.current_club.id}`, {
+          const membersResponse = await api.get<any[]>(`/users/?club_id=${clubId}`, {
             headers: { Authorization: `Token ${token}` }
           });
           
-          const clubMembers = membersResponse.data.map((user: any) => ({
-            id: user.id,
-            username: user.username,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            email: user.email
-          }));
+          // Fetch club user details to get roles and admin status
+          const clubUsersResponse = await api.get<any[]>(`/club-users/?club=${clubId}`, {
+            headers: { Authorization: `Token ${token}` }
+          });
           
+          const clubUsers = clubUsersResponse.data as any[];
+          console.log('Club users data:', clubUsers);
+          
+          const clubMembers = membersResponse.data.map((user: any) => {
+            // Find the corresponding club user data
+            const clubUser = clubUsers.find((cu: any) => {
+              // Try different ways to match the user
+              if (cu.user === user.id) return true;
+              if (typeof cu.user === 'object' && cu.user !== null && cu.user.id === user.id) return true;
+              if (cu.user_id === user.id) return true;
+              return false;
+            });
+            
+            return {
+              id: user.id,
+              username: user.username,
+              first_name: user.first_name,
+              last_name: user.last_name,
+              email: user.email,
+              is_admin: clubUser ? Boolean(clubUser.is_admin) : false,
+              club_role: clubUser ? clubUser.club_role : ''
+            };
+          });
+          
+          console.log('Enhanced club members:', clubMembers);
           setBowlers(clubMembers);
           setFilteredBowlers(clubMembers);
           setError(null);
@@ -86,6 +122,45 @@ export default function Bowlers() {
       console.error('Error fetching bowlers:', error);
       setError('Failed to load bowlers. Please try again later.');
       setLoading(false);
+    }
+  };
+
+  // Function to start a chat with a bowler
+  const startChat = async (userId: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        router.push('/');
+        return;
+      }
+      
+      if (!currentClub) {
+        alert('No club selected. Please select a club first.');
+        return;
+      }
+      
+      console.log('Starting chat with user ID:', userId);
+      
+      // Create a direct chat with the selected user
+      const response = await api.post<{id: number}>('/api/chats/', {
+        chat_type: 'direct',
+        club_id: currentClub.id,
+        members: [userId]  // This is the correct format - just the array of user IDs
+      }, {
+        headers: { Authorization: `Token ${token}` }
+      });
+      
+      console.log('Chat created:', response.data);
+      
+      // Navigate to the chat
+      if (response.data && response.data.id) {
+        router.push(`/messaging?chat=${response.data.id}`);
+      } else {
+        alert('Failed to create chat. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error creating chat:', error);
+      alert('Failed to create chat. Please try again.');
     }
   };
 
@@ -196,7 +271,10 @@ export default function Bowlers() {
                           Last Name
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Email
+                          Role
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
                         </th>
                       </tr>
                     </thead>
@@ -214,13 +292,32 @@ export default function Bowlers() {
                               {bowler.last_name}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {bowler.email}
+                              <div className="flex flex-wrap gap-1">
+                                {bowler.is_admin && (
+                                  <span className="inline-block text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded">
+                                    Admin
+                                  </span>
+                                )}
+                                {bowler.club_role && (
+                                  <span className="inline-block text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">
+                                    {bowler.club_role}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <button
+                                onClick={() => startChat(bowler.id)}
+                                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                              >
+                                Chat
+                              </button>
                             </td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
+                          <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
                             No bowlers found matching your search criteria.
                           </td>
                         </tr>

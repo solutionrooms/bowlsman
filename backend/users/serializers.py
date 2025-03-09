@@ -20,7 +20,7 @@ class ClubUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClubUser
-        fields = ['id', 'user', 'club', 'club_name', 'is_admin', 'created_at', 'last_login_at', 'user_details']
+        fields = ['id', 'user', 'club', 'club_name', 'is_admin', 'club_role', 'created_at', 'last_login_at', 'user_details']
         read_only_fields = ['created_at', 'last_login_at']
 
     def get_user_details(self, obj):

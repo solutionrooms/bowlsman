@@ -11,6 +11,8 @@ interface User {
   first_name: string;
   last_name: string;
   full_name: string;
+  club_role?: string;
+  is_admin?: boolean;
 }
 
 interface Competition {
@@ -70,7 +72,45 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
     // Fetch club members
     api.get<User[]>(`/api/club-members/${clubId}/`)
       .then(response => {
-        setUsers(response.data);
+        // Fetch club roles and admin status for each user
+        api.get(`/club-users/?club=${clubId}`)
+          .then(clubUsersResponse => {
+            const clubUsers = clubUsersResponse.data as any[];
+            console.log('Club users data:', clubUsers);
+            
+            // Enhance user data with club_role and is_admin
+            const enhancedUsers = response.data.map(user => {
+              // Try different ways to match the user
+              const clubUser = clubUsers.find(cu => {
+                // Check if user IDs match directly
+                if (cu.user === user.id) return true;
+                
+                // Check if user is an object with an id property
+                if (typeof cu.user === 'object' && cu.user !== null && cu.user.id === user.id) return true;
+                
+                // Check if user_id exists and matches
+                if (cu.user_id === user.id) return true;
+                
+                return false;
+              });
+              
+              console.log(`User ${user.username}:`, user, 'Club user data:', clubUser);
+              console.log(`User ${user.username} is_admin:`, clubUser ? clubUser.is_admin : false);
+              
+              return {
+                ...user,
+                club_role: clubUser ? clubUser.club_role : '',
+                is_admin: clubUser ? Boolean(clubUser.is_admin) : false
+              };
+            });
+            
+            console.log('Enhanced users with roles and admin status:', enhancedUsers);
+            setUsers(enhancedUsers);
+          })
+          .catch(error => {
+            console.error('Error fetching club user details:', error);
+            setUsers(response.data);
+          });
       })
       .catch(error => {
         console.error('Error fetching club members:', error);
@@ -251,7 +291,24 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
                           onChange={() => {}}
                           className="mr-2"
                         />
-                        <span>{user.full_name || user.username}</span>
+                        <div className="flex flex-col w-full">
+                          <div className="flex items-center">
+                            <span className="font-medium">
+                              {user.full_name || 
+                               (user.first_name || user.last_name ? 
+                                `${user.first_name || ''} ${user.last_name || ''}`.trim() : 
+                                user.username)}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {user.is_admin && (
+                              <span className="inline-block text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded">Admin</span>
+                            )}
+                            {user.club_role && (
+                              <span className="inline-block text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">{user.club_role}</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ))
                   )}

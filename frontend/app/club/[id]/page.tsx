@@ -25,9 +25,13 @@ interface ClubMember {
   club: number;
   club_name: string;
   is_admin: boolean;
+  club_role: string;
   created_at: string;
   last_login_at: string | null;
-  user_details: {
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  user_details?: {
     id: number;
     username: string;
     display_name: string;
@@ -40,6 +44,7 @@ interface AddMemberResponse {
   club: number;
   club_name: string;
   is_admin: boolean;
+  club_role: string;
   created_at: string;
   last_login_at: string | null;
   user_details: {
@@ -71,6 +76,8 @@ export default function ClubDetail({ params }: ClubDetailProps) {
   const [error, setError] = useState<string | null>(null);
   const [newPlayerName, setNewPlayerName] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [clubRole, setClubRole] = useState('');
+  const [isUserStaff, setIsUserStaff] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
   const [addMemberError, setAddMemberError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -106,6 +113,8 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('Current user:', userResponse.data.user);
         console.log('Is user staff:', isUserStaff);
         console.log('Club ID being requested:', clubId);
+        
+        setIsUserStaff(isUserStaff || false);
 
         // Fetch club details
         const clubResponse = await api.get<Club>(`/clubs/${clubId}/`, {
@@ -121,21 +130,69 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         });
         
         console.log('Club members (raw):', membersResponse.data);
-        console.log('Raw member user IDs:', membersResponse.data.map(m => m.user));
+        console.log('First member raw data:', membersResponse.data[0]);
         
-        // Filter out duplicate members (same user ID)
-        const uniqueMembers = membersResponse.data.reduce((acc: ClubMember[], current: ClubMember) => {
-          const isDuplicate = acc.find(item => item.user === current.user);
-          console.log('Checking member:', current.user, 'isDuplicate:', !!isDuplicate);
-          if (!isDuplicate) {
-            return [...acc, current];
+        // Map the response to match our expected format if needed
+        const mappedMembers = membersResponse.data.map(member => {
+          // Check if user_details is missing and create it from available data
+          if (!member.user_details) {
+            // Try to extract username, first_name, last_name from the response
+            const username = member.username || `user${member.user}`;
+            const firstName = member.first_name || '';
+            const lastName = member.last_name || '';
+            const displayName = firstName || lastName 
+              ? `${firstName} ${lastName}`.trim() 
+              : username;
+              
+            console.log('Creating user_details for member:', member.user, 'displayName:', displayName);
+            
+            return {
+              ...member,
+              user_details: {
+                id: member.user,
+                username: username,
+                display_name: displayName
+              }
+            };
           }
-          return acc;
-        }, []);
+          return member;
+        });
         
-        console.log('Club members (unique):', uniqueMembers);
-        console.log('Unique member user IDs:', uniqueMembers.map(m => m.user));
-        setMembers(uniqueMembers);
+        // Sort members: admins first, then roles, then alphabetically
+        const sortedMembers = [...mappedMembers].sort((a, b) => {
+          // Admins come first
+          if (a.is_admin && !b.is_admin) return -1;
+          if (!a.is_admin && b.is_admin) return 1;
+          
+          // Then members with roles
+          const aHasRole = a.club_role && a.club_role !== '';
+          const bHasRole = b.club_role && b.club_role !== '';
+          if (aHasRole && !bHasRole) return -1;
+          if (!aHasRole && bHasRole) return 1;
+          
+          // If both have roles, sort by role importance
+          if (aHasRole && bHasRole) {
+            const roleOrder = {
+              'President': 1,
+              'Vice-President': 2,
+              'Treasurer': 3,
+              'Secretary': 4
+            };
+            const aRoleOrder = roleOrder[a.club_role as keyof typeof roleOrder] || 99;
+            const bRoleOrder = roleOrder[b.club_role as keyof typeof roleOrder] || 99;
+            if (aRoleOrder !== bRoleOrder) {
+              return aRoleOrder - bRoleOrder;
+            }
+          }
+          
+          // Finally, sort alphabetically by display name
+          const aName = a.user_details?.display_name || '';
+          const bName = b.user_details?.display_name || '';
+          return aName.localeCompare(bName);
+        });
+        
+        console.log('Club members (mapped and sorted):', sortedMembers);
+        setMembers(sortedMembers);
         
         // Fetch all users that can be added to the club (non-members)
         const usersResponse = await api.get<User[]>('/users/', {
@@ -144,14 +201,12 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         });
         
         console.log('All users fetched:', usersResponse.data);
-        console.log('All user IDs:', usersResponse.data.map(u => u.id));
         
         // Filter out users who are already members
-        const memberUserIds = new Set(uniqueMembers.map(m => m.user));
+        const memberUserIds = new Set(mappedMembers.map(m => m.user));
         const availableUsers = usersResponse.data.filter(user => !memberUserIds.has(user.id));
         
-        console.log('Available users after filtering:', availableUsers);
-        console.log('Available user IDs:', availableUsers.map(u => u.id));
+        console.log('Available users:', availableUsers);
         setAllUsers(availableUsers);
         
         setLoading(false);
@@ -223,35 +278,83 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         router.push('/');
         return;
       }
+
+      const response = await api.get<ClubMember[]>(
+        `/club-users/?club=${clubId}`,
+        { headers: { Authorization: `Token ${token}` } }
+      );
+
+      console.log('Refreshed club members (raw):', response.data);
       
-      // Fetch club members
-      const membersResponse = await api.get<ClubMember[]>(`/club-users/?club=${clubId}`, {
-        headers: { Authorization: `Token ${token}` }
+      // Map the response to match our expected format if needed
+      const mappedMembers = response.data.map(member => {
+        // Check if user_details is missing and create it from available data
+        if (!member.user_details) {
+          // Try to extract username, first_name, last_name from the response
+          const username = member.username || `user${member.user}`;
+          const firstName = member.first_name || '';
+          const lastName = member.last_name || '';
+          const displayName = firstName || lastName 
+            ? `${firstName} ${lastName}`.trim() 
+            : username;
+            
+          console.log('Creating user_details for member:', member.user, 'displayName:', displayName);
+          
+          return {
+            ...member,
+            user_details: {
+              id: member.user,
+              username: username,
+              display_name: displayName
+            }
+          };
+        }
+        return member;
       });
       
-      // Filter out duplicate members
-      const uniqueMembers = membersResponse.data.reduce((acc: ClubMember[], current: ClubMember) => {
-        const isDuplicate = acc.find(item => item.user === current.user);
-        if (!isDuplicate) {
-          return [...acc, current];
+      // Sort members: admins first, then roles, then alphabetically
+      const sortedMembers = [...mappedMembers].sort((a, b) => {
+        // Admins come first
+        if (a.is_admin && !b.is_admin) return -1;
+        if (!a.is_admin && b.is_admin) return 1;
+        
+        // Then members with roles
+        const aHasRole = a.club_role && a.club_role !== '';
+        const bHasRole = b.club_role && b.club_role !== '';
+        if (aHasRole && !bHasRole) return -1;
+        if (!aHasRole && bHasRole) return 1;
+        
+        // If both have roles, sort by role importance
+        if (aHasRole && bHasRole) {
+          const roleOrder = {
+            'President': 1,
+            'Vice-President': 2,
+            'Treasurer': 3,
+            'Secretary': 4
+          };
+          const aRoleOrder = roleOrder[a.club_role as keyof typeof roleOrder] || 99;
+          const bRoleOrder = roleOrder[b.club_role as keyof typeof roleOrder] || 99;
+          if (aRoleOrder !== bRoleOrder) {
+            return aRoleOrder - bRoleOrder;
+          }
         }
-        return acc;
-      }, []);
+        
+        // Finally, sort alphabetically by display name
+        const aName = a.user_details?.display_name || '';
+        const bName = b.user_details?.display_name || '';
+        return aName.localeCompare(bName);
+      });
       
-      console.log('Refreshed club members (unique):', uniqueMembers.length);
-      setMembers(uniqueMembers);
-      
-      return uniqueMembers;
-    } catch (error) {
-      console.error('Error refreshing members:', error);
-      return null;
+      console.log('Refreshed club members (mapped and sorted):', sortedMembers);
+      setMembers(sortedMembers);
+    } catch (error: any) {
+      console.error('Error fetching members:', error);
+      setError('Failed to load club members. Please try again.');
     }
   };
 
   const handleAddMember = async (e: FormEvent | null, selectedUser?: User) => {
     if (e) e.preventDefault();
-    if (!selectedUser && !newPlayerName.trim()) return;
-
     setAddingMember(true);
     setAddMemberError(null);
 
@@ -262,41 +365,67 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return;
       }
 
-      console.log('Adding member:', selectedUser ? selectedUser : newPlayerName);
+      let username = '';
       
-      await api.post<AddMemberResponse>(
+      if (selectedUser) {
+        username = selectedUser.username;
+      } else if (newPlayerName.trim()) {
+        username = newPlayerName.trim();
+      } else {
+        setAddMemberError('Please enter a username');
+        setAddingMember(false);
+        return;
+      }
+
+      // Check if the role is already assigned to another member
+      if (clubRole !== '') {
+        const memberWithRole = members.find(m => m.club_role === clubRole);
+        
+        if (memberWithRole) {
+          const memberName = memberWithRole.user_details?.display_name || 
+            `User ${typeof memberWithRole.user === 'object' ? (memberWithRole.user as any).id : memberWithRole.user}`;
+          
+          setAddMemberError(`Cannot assign role "${clubRole}" to this member. The role is already assigned to ${memberName}.`);
+          setAddingMember(false);
+          return;
+        }
+      }
+
+      console.log('Adding member:', username, 'as admin:', isAdmin, 'with role:', clubRole);
+      
+      const response = await api.post<AddMemberResponse>(
         `/clubs/${clubId}/add_user/`,
         { 
-          username: selectedUser ? selectedUser.username : newPlayerName,
-          is_admin: isAdmin 
+          username,
+          is_admin: isAdmin,
+          club_role: clubRole
         },
         { headers: { Authorization: `Token ${token}` } }
       );
 
-      // Refresh the member list to ensure we have the latest data
-      await refreshMembers();
+      console.log('Member added:', response.data);
       
       // Reset form
       setNewPlayerName('');
       setIsAdmin(false);
+      setClubRole('');
       setSelectedUser(null);
+      
+      // Refresh the member list to ensure we have the latest data
+      await refreshMembers();
     } catch (error: any) {
       console.error('Error adding member:', error);
-      if (error.response?.data?.error) {
-        setAddMemberError(error.response.data.error);
-      } else {
-        setAddMemberError('Failed to add member. Please try again.');
-      }
+      setAddMemberError(error.response?.data?.error || 'Failed to add member. Please try again.');
     } finally {
       setAddingMember(false);
     }
   };
 
-  const handleRemoveMember = async (userId: number) => {
+  const handleRemoveMember = async (memberId: number) => {
     if (!confirm('Are you sure you want to remove this member?')) {
       return;
     }
-
+    
     try {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -304,7 +433,21 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return;
       }
 
-      console.log('Removing member with user ID:', userId);
+      // Find the member to get the user_id
+      const member = members.find(m => m.id === memberId);
+      if (!member) {
+        alert('Member not found');
+        return;
+      }
+
+      console.log('Removing member with ID:', memberId, 'Member:', member);
+      
+      // Extract the user ID, handling both number and object cases
+      const userId = typeof member.user === 'object' && member.user !== null 
+        ? (member.user as any).id 
+        : member.user;
+      
+      console.log('Using user ID:', userId);
       
       await api.post(
         `/clubs/${clubId}/remove_user/`,
@@ -329,29 +472,140 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       }
 
       console.log('Toggling admin status for member:', member);
+      console.log('Member user ID type:', typeof member.user, 'value:', member.user);
+      
+      // Extract the user ID, handling both number and object cases
+      const userId = typeof member.user === 'object' && member.user !== null 
+        ? (member.user as any).id 
+        : member.user;
+      
+      console.log('Using user ID:', userId);
+      
+      // If we're removing admin status, check if this is the last admin
+      if (member.is_admin) {
+        // Count how many admins we have in the club
+        const adminCount = members.filter(m => m.is_admin).length;
+        console.log('Admin count in club:', adminCount);
+        
+        if (adminCount <= 1) {
+          // This is the last admin, we can't remove them
+          alert('Cannot remove the last admin of the club. Please make another user an admin first.');
+          return;
+        }
+      }
       
       // First remove the user
       await api.post(
         `/clubs/${clubId}/remove_user/`,
-        { user_id: member.user },
+        { user_id: userId },
         { headers: { Authorization: `Token ${token}` } }
       );
 
+      // Get the username to use
+      const username = typeof member.user === 'object' && member.user !== null && (member.user as any).username
+        ? (member.user as any).username
+        : member.username || `user${userId}`;
+      
       // Then add them back with the new admin status
-      await api.post<AddMemberResponse>(
+      const response = await api.post(
         `/clubs/${clubId}/add_user/`,
         { 
-          user_id: member.user,
-          is_admin: !member.is_admin 
+          username: username,
+          is_admin: !member.is_admin,
+          club_role: member.club_role
         },
         { headers: { Authorization: `Token ${token}` } }
       );
+      
+      console.log('Add user response:', response.data);
+      console.log('Sent club_role:', member.club_role, 'Received club_role:', (response.data as any).club_role);
 
       // Refresh the member list to ensure we have the latest data
       await refreshMembers();
     } catch (error: any) {
       console.error('Error toggling admin status:', error);
       alert(error.response?.data?.error || 'Failed to update admin status. Please try again.');
+    }
+  };
+
+  const handleUpdateClubRole = async (member: ClubMember, newRole: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        router.push('/');
+        return;
+      }
+
+      console.log('Updating club role for member:', member, 'to:', newRole);
+      console.log('Member user ID type:', typeof member.user, 'value:', member.user);
+      
+      // Check if the role is already assigned to another member
+      if (newRole !== '') {
+        const memberWithRole = members.find(m => 
+          m.id !== member.id && 
+          m.club_role === newRole
+        );
+        
+        if (memberWithRole) {
+          const memberName = memberWithRole.user_details?.display_name || 
+            `User ${typeof memberWithRole.user === 'object' ? (memberWithRole.user as any).id : memberWithRole.user}`;
+          
+          alert(`Cannot assign role "${newRole}" to this member. The role is already assigned to ${memberName}.`);
+          return;
+        }
+      }
+      
+      // Extract the user ID, handling both number and object cases
+      const userId = typeof member.user === 'object' && member.user !== null 
+        ? (member.user as any).id 
+        : member.user;
+      
+      console.log('Using user ID:', userId);
+      
+      // Check if this is an admin user
+      if (member.is_admin) {
+        // Count how many admins we have in the club
+        const adminCount = members.filter(m => m.is_admin).length;
+        console.log('Admin count in club:', adminCount);
+        
+        if (adminCount <= 1) {
+          // This is the last admin, we can't remove them
+          alert('Cannot update role for the last admin of the club. Please make another user an admin first.');
+          return;
+        }
+      }
+      
+      // First remove the user
+      await api.post(
+        `/clubs/${clubId}/remove_user/`,
+        { user_id: userId },
+        { headers: { Authorization: `Token ${token}` } }
+      );
+
+      // Get the username to use
+      const username = typeof member.user === 'object' && member.user !== null && (member.user as any).username
+        ? (member.user as any).username
+        : member.username || `user${userId}`;
+      
+      // Then add them back with the new role
+      const response = await api.post(
+        `/clubs/${clubId}/add_user/`,
+        { 
+          username: username,
+          is_admin: member.is_admin,
+          club_role: newRole
+        },
+        { headers: { Authorization: `Token ${token}` } }
+      );
+      
+      console.log('Add user response:', response.data);
+      console.log('Sent club_role:', newRole, 'Received club_role:', (response.data as any).club_role);
+
+      // Refresh the member list to ensure we have the latest data
+      await refreshMembers();
+    } catch (error: any) {
+      console.error('Error updating club role:', error);
+      alert(error.response?.data?.error || 'Failed to update club role. Please try again.');
     }
   };
 
@@ -413,14 +667,34 @@ export default function ClubDetail({ params }: ClubDetailProps) {
             {members.map(member => (
               <div key={member.id} className="flex items-center justify-between bg-white p-4 rounded-lg border">
                 <div>
-                  <span className="font-medium">{member.user_details.display_name}</span>
+                  <span className="font-medium">
+                    {member.user_details?.display_name || `User ${member.user}`}
+                  </span>
                   {member.is_admin && (
                     <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
                       Admin
                     </span>
                   )}
+                  {member.club_role && (
+                    <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
+                      {member.club_role}
+                    </span>
+                  )}
                 </div>
                 <div className="space-x-2">
+                  {isUserStaff && (
+                    <select
+                      value={member.club_role || ""}
+                      onChange={(e) => handleUpdateClubRole(member, e.target.value)}
+                      className="px-2 py-1 text-sm border-gray-300 rounded shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    >
+                      <option value="">No Role</option>
+                      <option value="President">President</option>
+                      <option value="Vice-President">Vice-President</option>
+                      <option value="Treasurer">Treasurer</option>
+                      <option value="Secretary">Secretary</option>
+                    </select>
+                  )}
                   <button
                     onClick={() => handleToggleAdmin(member)}
                     className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition"
@@ -428,7 +702,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
                     {member.is_admin ? 'Remove Admin' : 'Make Admin'}
                   </button>
                   <button
-                    onClick={() => handleRemoveMember(member.user)}
+                    onClick={() => handleRemoveMember(member.id)}
                     className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition"
                   >
                     Remove
@@ -505,6 +779,24 @@ export default function ClubDetail({ params }: ClubDetailProps) {
                 </label>
               </div>
               
+              <div className="mt-4">
+                <label htmlFor="clubRole" className="block text-sm font-medium text-gray-700">
+                  Club Role
+                </label>
+                <select
+                  id="clubRole"
+                  value={clubRole}
+                  onChange={(e) => setClubRole(e.target.value)}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                >
+                  <option value="">No Role</option>
+                  <option value="President">President</option>
+                  <option value="Vice-President">Vice-President</option>
+                  <option value="Treasurer">Treasurer</option>
+                  <option value="Secretary">Secretary</option>
+                </select>
+              </div>
+              
               {addMemberError && (
                 <div className="p-3 mt-2 bg-red-100 border border-red-400 text-red-700 rounded">
                   {addMemberError}
@@ -519,14 +811,32 @@ export default function ClubDetail({ params }: ClubDetailProps) {
                   members.map(member => (
                     <div key={member.id} className="flex items-center justify-between bg-white p-3 rounded-lg border">
                       <div>
-                        <span className="font-medium">{member.user_details.display_name}</span>
+                        <span className="font-medium">
+                          {member.user_details?.display_name || `User ${member.user}`}
+                        </span>
                         {member.is_admin && (
                           <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">
                             Admin
                           </span>
                         )}
+                        {member.club_role && (
+                          <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded">
+                            {member.club_role}
+                          </span>
+                        )}
                       </div>
-                      <div className="space-x-2">
+                      <div className="space-x-2 flex items-center">
+                        <select
+                          value={member.club_role}
+                          onChange={(e) => handleUpdateClubRole(member, e.target.value)}
+                          className="text-xs border-gray-300 rounded shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        >
+                          <option value="">No Role</option>
+                          <option value="President">President</option>
+                          <option value="Vice-President">Vice-President</option>
+                          <option value="Treasurer">Treasurer</option>
+                          <option value="Secretary">Secretary</option>
+                        </select>
                         <button
                           onClick={() => handleToggleAdmin(member)}
                           className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition"
@@ -534,7 +844,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
                           {member.is_admin ? 'Remove Admin' : 'Make Admin'}
                         </button>
                         <button
-                          onClick={() => handleRemoveMember(member.user)}
+                          onClick={() => handleRemoveMember(member.id)}
                           className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition"
                         >
                           Remove
