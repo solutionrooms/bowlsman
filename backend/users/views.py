@@ -154,19 +154,23 @@ class ClubUserViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        if self.request.user.is_superuser:
-            return ClubUser.objects.all()
+        queryset = ClubUser.objects.all()
         
-        # Users can only see their own memberships or memberships in clubs they administer
-        admin_clubs = ClubUser.objects.filter(user=self.request.user, is_admin=True).values_list('club_id', flat=True)
-        queryset = ClubUser.objects.filter(
-            models.Q(user=self.request.user) | models.Q(club_id__in=admin_clubs)
-        )
-        
-        # Filter by club_id if provided
+        # Filter by club_id or club if provided
         club_id = self.request.query_params.get('club_id')
-        if club_id:
-            queryset = queryset.filter(club_id=club_id)
+        club = self.request.query_params.get('club')
+        filter_club_id = club_id or club
+        
+        # Always filter by club if provided, regardless of user permissions
+        if filter_club_id:
+            queryset = queryset.filter(club_id=filter_club_id)
+        
+        # If not superuser or staff, restrict to clubs the user is a member of or administers
+        if not (self.request.user.is_superuser or self.request.user.is_staff):
+            admin_clubs = ClubUser.objects.filter(user=self.request.user, is_admin=True).values_list('club_id', flat=True)
+            queryset = queryset.filter(
+                models.Q(user=self.request.user) | models.Q(club_id__in=admin_clubs)
+            )
             
         return queryset.select_related('user', 'club')
 
