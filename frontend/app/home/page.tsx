@@ -261,18 +261,17 @@ export default function Home() {
           {/* Welcome Message */}
           <div className="bg-white shadow rounded-lg p-6 mb-6">
             <PageHeading 
-              title="About Bowlsman" 
+              title="About BowlsHub" 
               className="text-2xl font-bold mb-4"
             />
-            <p className="text-gray-700 mb-4">
-              Bowlsman is your all-in-one platform for managing bowling competitions and tournaments. 
-              Whether you're organizing a casual league or a professional tournament, our app helps you 
-              create and manage competitions, track players, generate schedules, and more.
-            </p>
-            <p className="text-gray-700">
-              With Bowlsman, you can easily add players to your competitions, create round-robin schedules, 
-              replace players when needed, and keep everything organized in one place.
-            </p>
+            <div className="mt-4">
+              <p className="text-gray-700 mb-3">
+                BowlsHub is your all-in-one platform for managing bowling competitions and tournaments. Whether you're organizing a casual league or a professional tournament, our app helps you create and manage competitions, track players, generate schedules, and more.
+              </p>
+              <p className="text-gray-700">
+                With BowlsHub, you can easily add players to your competitions, create round-robin schedules, replace players when needed, and keep everything organized in one place.
+              </p>
+            </div>
           </div>
         </div>
       </main>

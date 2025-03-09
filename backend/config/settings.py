@@ -63,11 +63,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'webapp2',
-        'USER': 'postgres',
-        'PASSWORD': 'postgres',
-        'HOST': 'bowlsman-postgres',
-        'PORT': '5432',
+        'NAME': os.environ.get('POSTGRES_DB', 'webapp2'),
+        'USER': os.environ.get('POSTGRES_USER', 'postgres'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
+        'HOST': 'bowlshub-postgres',
+        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
     }
 }
 
@@ -87,13 +87,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Email Configuration
 # Use SMTP for testing
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('SMTP_HOST')
-EMAIL_PORT = int(os.environ.get('SMTP_PORT', 587))
-EMAIL_HOST_USER = os.environ.get('SMTP_USER')
-EMAIL_HOST_PASSWORD = os.environ.get('SMTP_PASS')
-EMAIL_USE_TLS = os.environ.get('SMTP_SSL', 'false').lower() != 'false'
-DEFAULT_FROM_EMAIL = os.environ.get('SMTP_SENDER')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 EMAIL_TIMEOUT = 30  # Timeout in seconds
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@bowlshub.example.com')
 
 # Uncomment to use console backend instead
 # EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
@@ -114,9 +114,10 @@ SPECTACULAR_SETTINGS = {
 }
 
 CORS_ALLOWED_ORIGINS = [
-    "https://bowlsman.fridaydigital.co.uk",
+    "http://localhost:3000",
     "http://localhost:3010",
-    "http://localhost:8010",  # Add port 8010 for API docs
+    "http://localhost:8010",
+    "https://bowlshub.fridaydigital.co.uk",
 ]
 
 # Frontend URL for password reset links
@@ -125,7 +126,7 @@ CORS_ALLOWED_ORIGINS = [
 if DEBUG:
     FRONTEND_URL = "http://localhost:3010"
 else:
-    FRONTEND_URL = "https://bowlsman.fridaydigital.co.uk"
+    FRONTEND_URL = os.environ.get('FRONTEND_URL', "https://bowlshub.fridaydigital.co.uk")
 
 CORS_ALLOW_CREDENTIALS = True
 

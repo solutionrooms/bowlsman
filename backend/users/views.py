@@ -10,9 +10,9 @@ from django.utils import timezone
 from .serializers import (
     UserSerializer, CompetitionSerializer, CompetitionUserSerializer, 
     CompetitionScheduleSerializer, ClubSerializer, ClubUserSerializer,
-    GameScoreSerializer
+    GameScoreSerializer, ClubApplicationSerializer
 )
-from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile, PasswordResetToken
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile, PasswordResetToken, ClubApplication
 import logging
 import random
 from .scheduling import create_round_robin_schedule
@@ -30,13 +30,20 @@ class ClubViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Only superusers can see all clubs
-        if self.request.user.is_superuser:
+        # Check if this is a request from the dashboard (looking for all clubs)
+        is_dashboard_request = self.request.query_params.get('for_dashboard', False)
+        
+        # For dashboard requests or superusers, return all clubs
+        if is_dashboard_request or self.request.user.is_superuser:
             return Club.objects.all()
-        # Regular users can only see clubs they are members of
+            
+        # Regular users can only see clubs they are members of for other operations
         return Club.objects.filter(members__user=self.request.user)
 
     def perform_create(self, serializer):
+        # Check if user is staff
+        if not self.request.user.is_staff:
+            raise ValidationError("Only staff members can create clubs")
         club = serializer.save()
         # Add the user who created the club as an admin
         ClubUser.objects.create(user=self.request.user, club=club, is_admin=True)
@@ -147,6 +154,79 @@ class ClubViewSet(viewsets.ModelViewSet):
                 {'error': 'User is not a member of this club'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
+
+    @action(detail=True, methods=['post'])
+    def apply(self, request, pk=None):
+        """Apply to join a club"""
+        try:
+            club = Club.objects.get(id=pk)
+        except Club.DoesNotExist:
+            return Response(
+                {'error': 'Club not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        user = request.user
+        message = request.data.get('message', '')
+        
+        # Check if user is already a member
+        if ClubUser.objects.filter(user=user, club=club).exists():
+            return Response(
+                {'error': 'You are already a member of this club'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if user already has a pending application
+        if ClubApplication.objects.filter(user=user, club=club, status='pending').exists():
+            return Response(
+                {'error': 'You already have a pending application for this club'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create application
+        application = ClubApplication.objects.create(
+            user=user,
+            club=club,
+            message=message
+        )
+        
+        # Find club secretary or admin to notify
+        secretary = ClubUser.objects.filter(club=club, club_role='Secretary').first()
+        if not secretary:
+            # If no secretary, find any admin
+            secretary = ClubUser.objects.filter(club=club, is_admin=True).first()
+        
+        if secretary:
+            # Send email notification
+            secretary_user = secretary.user
+            subject = f'New Club Application: {user.username}'
+            message = f"""
+            Hello {secretary_user.first_name or secretary_user.username},
+            
+            A new application has been received for {club.name}.
+            
+            User: {user.username} ({user.first_name} {user.last_name})
+            Email: {user.email}
+            Message: {message}
+            
+            Please log in to review this application.
+            """
+            
+            try:
+                send_mail(
+                    subject,
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [secretary_user.email],
+                    fail_silently=False,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send email notification: {e}")
+        
+        return Response(
+            ClubApplicationSerializer(application).data,
+            status=status.HTTP_201_CREATED
+        )
 
 class ClubUserViewSet(viewsets.ModelViewSet):
     serializer_class = ClubUserSerializer
@@ -427,6 +507,9 @@ class UserViewSet(viewsets.ModelViewSet):
         username = request.data.get('username')
         password = request.data.get('password')
         email = request.data.get('email')
+        first_name = request.data.get('first_name', '')
+        last_name = request.data.get('last_name', '')
+        postcode = request.data.get('postcode', '')
         
         if not username or not password or not email:
             return Response(
@@ -452,8 +535,16 @@ class UserViewSet(viewsets.ModelViewSet):
         user = User.objects.create_user(
             username=username,
             email=email,
-            password=password
+            password=password,
+            first_name=first_name,
+            last_name=last_name
         )
+        
+        # Create or update user profile with postcode
+        profile, created = UserProfile.objects.get_or_create(user=user)
+        if postcode:
+            profile.postcode = postcode
+            profile.save()
         
         # Create token
         token, created = Token.objects.get_or_create(user=user)
@@ -522,82 +613,39 @@ class UserViewSet(viewsets.ModelViewSet):
         # Log the reset URL for debugging
         logger.info(f"Password reset URL: {reset_url}")
         
-        # Send the email
-        subject = 'Password Reset for Bowlsman'
-        message = f'''
-        Hello {user.first_name},
-        
-        You have requested to reset your password for your Bowlsman account.
-        
-        Please click the link below to reset your password:
-        {reset_url}
-        
-        This link will expire in 24 hours.
-        
-        If you did not request this password reset, please ignore this email.
-        
-        Best regards,
-        The Bowlsman Team
-        '''
-        
+        # Send email with reset link
         try:
-            # Log SMTP settings for debugging
-            logger.info(f"SMTP Settings: Host={settings.EMAIL_HOST}, Port={settings.EMAIL_PORT}, User={settings.EMAIL_HOST_USER}")
-            logger.info(f"Sending email to: {user.email}, From: {settings.DEFAULT_FROM_EMAIL}")
+            reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token.token}"
             
-            # Use a direct SMTP connection instead of Django's EmailMessage
-            import smtplib
-            from email.mime.text import MIMEText
+            subject = 'Password Reset for BowlsHub'
+            message = f"""
+            Hello {user.first_name or user.username},
             
-            # Create the email message
-            msg = MIMEText(message)
-            msg['Subject'] = subject
-            msg['From'] = settings.DEFAULT_FROM_EMAIL
-            msg['To'] = user.email
+            You have requested to reset your password for your BowlsHub account.
             
-            # Connect to the SMTP server
-            logger.info(f"Connecting to SMTP server: {settings.EMAIL_HOST}:{settings.EMAIL_PORT}")
+            Please click the link below to reset your password:
+            {reset_url}
             
-            try:
-                smtp = smtplib.SMTP(settings.EMAIL_HOST, settings.EMAIL_PORT, timeout=settings.EMAIL_TIMEOUT)
-                
-                # Always use TLS for this SMTP server
-                logger.info("Starting TLS")
-                smtp.starttls()
-                
-                # Login if credentials are provided
-                if settings.EMAIL_HOST_USER and settings.EMAIL_HOST_PASSWORD:
-                    logger.info(f"Logging in as: {settings.EMAIL_HOST_USER}")
-                    smtp.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
-                
-                # Send the email
-                logger.info(f"Sending email to: {user.email}")
-                smtp.sendmail(settings.DEFAULT_FROM_EMAIL, [user.email], msg.as_string())
-                
-                # Close the connection
-                smtp.quit()
-                
-                logger.info(f"Password reset email sent to {user.email}")
-            except smtplib.SMTPException as smtp_error:
-                logger.error(f"SMTP Error: {str(smtp_error)}")
-                # For development, we'll still return success even if email fails
-                # This allows testing the reset flow without a working SMTP server
-                logger.info(f"Development mode: Simulating email sent to {user.email}")
-                logger.info(f"Password reset URL: {reset_url}")
+            This link will expire in 24 hours.
             
-            return Response(
-                {'message': 'If a user with this email exists, a password reset link has been sent.'},
-                status=status.HTTP_200_OK
+            If you did not request this password reset, please ignore this email.
+            
+            The BowlsHub Team
+            """
+            
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [user.email],
+                fail_silently=False,
             )
+            
+            return Response({'message': 'Password reset email sent'})
         except Exception as e:
-            logger.error(f"Failed to send password reset email: {str(e)}")
-            logger.error(f"Error type: {type(e).__name__}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            # Delete the token if email sending fails
-            token.delete()
+            logger.error(f"Failed to send password reset email: {e}")
             return Response(
-                {'error': 'Failed to send password reset email. Please try again later.'},
+                {'error': 'Failed to send password reset email'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -1212,4 +1260,141 @@ def create_schedule(request, competition_id):
         return Response(
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+class ClubApplicationViewSet(viewsets.ModelViewSet):
+    serializer_class = ClubApplicationSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Staff can see all applications
+        if user.is_staff:
+            return ClubApplication.objects.all()
+            
+        # Club admins can see applications for their clubs
+        admin_clubs = ClubUser.objects.filter(user=user, is_admin=True).values_list('club_id', flat=True)
+        
+        # Users can see their own applications
+        return ClubApplication.objects.filter(
+            models.Q(user=user) | models.Q(club_id__in=admin_clubs)
+        )
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user, status='pending')
+    
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        application = self.get_object()
+        
+        # Check if user is admin of the club
+        if not ClubUser.objects.filter(user=request.user, club=application.club, is_admin=True).exists() and not request.user.is_staff:
+            return Response(
+                {'error': 'Only club admins can approve applications'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        # Check if application is pending
+        if application.status != 'pending':
+            return Response(
+                {'error': f'Application is already {application.status}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Check if user is already a member
+        if ClubUser.objects.filter(user=application.user, club=application.club).exists():
+            application.status = 'approved'
+            application.save()
+            return Response(
+                {'message': 'User is already a member of this club'}, 
+                status=status.HTTP_200_OK
+            )
+            
+        # Add user to club
+        with transaction.atomic():
+            ClubUser.objects.create(
+                user=application.user,
+                club=application.club,
+                is_admin=False
+            )
+            
+            application.status = 'approved'
+            application.save()
+            
+            # Send email notification to user
+            subject = f'Club Application Approved: {application.club.name}'
+            message = f"""
+            Hello {application.user.first_name or application.user.username},
+            
+            Your application to join {application.club.name} has been approved!
+            
+            You can now log in and access the club.
+            """
+            
+            try:
+                send_mail(
+                    subject,
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [application.user.email],
+                    fail_silently=False,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send email notification: {e}")
+        
+        return Response(
+            ClubApplicationSerializer(application).data,
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        application = self.get_object()
+        
+        # Check if user is admin of the club
+        if not ClubUser.objects.filter(user=request.user, club=application.club, is_admin=True).exists() and not request.user.is_staff:
+            return Response(
+                {'error': 'Only club admins can reject applications'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        # Check if application is pending
+        if application.status != 'pending':
+            return Response(
+                {'error': f'Application is already {application.status}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Reject application
+        application.status = 'rejected'
+        application.save()
+        
+        # Send email notification to user
+        subject = f'Club Application Status: {application.club.name}'
+        message = f"""
+        Hello {application.user.first_name or application.user.username},
+        
+        Your application to join {application.club.name} has been reviewed.
+        
+        Unfortunately, your application was not approved at this time.
+        
+        You may contact the club directly for more information.
+        """
+        
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [application.user.email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send email notification: {e}")
+        
+        return Response(
+            ClubApplicationSerializer(application).data,
+            status=status.HTTP_200_OK
         ) 

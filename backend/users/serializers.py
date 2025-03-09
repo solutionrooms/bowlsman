@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile, ClubApplication
 
 class ClubSerializer(serializers.ModelSerializer):
     member_count = serializers.SerializerMethodField()
@@ -55,10 +55,11 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
     clubs = serializers.SerializerMethodField()
     profile_picture = serializers.SerializerMethodField()
+    postcode = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'is_active', 'is_staff', 'password', 'first_name', 'last_name', 'display_name', 'search_name', 'clubs', 'profile_picture']
+        fields = ['id', 'username', 'email', 'is_active', 'is_staff', 'password', 'first_name', 'last_name', 'display_name', 'search_name', 'clubs', 'profile_picture', 'postcode']
         extra_kwargs = {
             'password': {'write_only': True},
             'username': {'required': True},
@@ -90,27 +91,58 @@ class UserSerializer(serializers.ModelSerializer):
             profile = obj.profile
             if profile.profile_picture:
                 return profile.profile_picture.url
+            # Return postcode from profile if available
+            return profile.profile_picture.url if profile.profile_picture else None
         except UserProfile.DoesNotExist:
             pass
         return None
+        
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        # Add postcode from profile if it exists
+        try:
+            profile = instance.profile
+            ret['postcode'] = profile.postcode
+        except UserProfile.DoesNotExist:
+            ret['postcode'] = None
+        return ret
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
+        postcode = validated_data.pop('postcode', None)
+        
         user = User.objects.create(**validated_data)
         if password:
             user.set_password(password)
             user.save()
-        # Create UserProfile
-        UserProfile.objects.create(user=user)
+            
+        # Create or update user profile with postcode
+        profile, created = UserProfile.objects.get_or_create(user=user)
+        if postcode:
+            profile.postcode = postcode
+            profile.save()
+            
         return user
-
+        
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
+        postcode = validated_data.pop('postcode', None)
+        
+        # Update user fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+            
         if password:
             instance.set_password(password)
+        
         instance.save()
+        
+        # Update profile with postcode if provided
+        if postcode is not None:
+            profile, created = UserProfile.objects.get_or_create(user=instance)
+            profile.postcode = postcode
+            profile.save()
+            
         return instance
 
 class CompetitionUserSerializer(serializers.ModelSerializer):
@@ -186,4 +218,20 @@ class GameScoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameScore
         fields = ['id', 'schedule', 'side_1_score', 'side_2_score', 'created_at', 'updated_at', 'completed', 'round', 'sub_round']
-        read_only_fields = ['created_at', 'updated_at'] 
+        read_only_fields = ['created_at', 'updated_at']
+
+class ClubApplicationSerializer(serializers.ModelSerializer):
+    user_details = serializers.SerializerMethodField()
+    club_name = serializers.CharField(source='club.name', read_only=True)
+    
+    class Meta:
+        model = ClubApplication
+        fields = ['id', 'user', 'club', 'club_name', 'status', 'message', 'created_at', 'updated_at', 'user_details']
+        read_only_fields = ['created_at', 'updated_at', 'status']
+        
+    def get_user_details(self, obj):
+        return {
+            'id': obj.user.id,
+            'username': obj.user.username,
+            'display_name': f"{obj.user.first_name} {obj.user.last_name}" if obj.user.first_name or obj.user.last_name else obj.user.username
+        } 

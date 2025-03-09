@@ -23,6 +23,7 @@ interface User {
   is_staff: boolean;
   clubs: ClubUser[];
   profile_picture?: string;
+  postcode?: string;
 }
 
 interface Club {
@@ -123,8 +124,18 @@ export default function Profile() {
   };
 
   const handleEdit = () => {
-    setEditedUser({ ...user! });
     setIsEditing(true);
+    if (user) {
+      setEditedUser({
+        ...user,
+        first_name: user.first_name || '',
+        last_name: user.last_name || '',
+        email: user.email || '',
+        phone_number: user.phone_number || '',
+        notes: user.notes || '',
+        postcode: user.postcode || ''
+      });
+    }
   };
 
   const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -353,6 +364,16 @@ export default function Profile() {
                           className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
                         />
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Postcode</label>
+                        <input
+                          type="text"
+                          name="postcode"
+                          value={editedUser?.postcode || ''}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                        />
+                      </div>
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                         <textarea
@@ -400,6 +421,12 @@ export default function Profile() {
                           {user?.phone_number || 'Not set'}
                         </div>
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">Postcode</label>
+                        <div className="px-4 py-2 bg-gray-50 rounded-lg text-gray-900">
+                          {user?.postcode || 'Not set'}
+                        </div>
+                      </div>
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-500 mb-1">Notes</label>
                         <div className="px-4 py-2 bg-gray-50 rounded-lg text-gray-900 whitespace-pre-wrap">
@@ -412,14 +439,14 @@ export default function Profile() {
               </div>
 
               {/* Club Membership */}
-              {user?.clubs && user.clubs.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-6">
-                  <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                    Club Membership
-                  </h2>
+              <div className="bg-white rounded-xl border border-gray-100 p-6">
+                <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  Club Membership
+                </h2>
+                {user?.clubs && user.clubs.length > 0 ? (
                   <div className="space-y-4">
                     {userClubs.map((uc: ClubUser) => (
                       <div key={uc.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-lg hover:bg-gray-100 transition-colors duration-200">
@@ -447,8 +474,26 @@ export default function Profile() {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">No Club Membership</h3>
+                    <p className="text-gray-700 mb-3">
+                      You are not currently a member of any bowling club. To access all features of BowlsHub, you need to join a club.
+                    </p>
+                    <p className="text-gray-700 mb-3">
+                      Visit the dashboard to browse available clubs and submit membership applications.
+                    </p>
+                    <div className="mt-4">
+                      <button
+                        onClick={() => router.push('/dashboard')}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                      >
+                        Go to Dashboard
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* All Clubs (for staff users) */}
               {user?.is_staff && allClubs.length > 0 && (
@@ -482,19 +527,21 @@ export default function Profile() {
                 </div>
               )}
 
-              {/* Manage Clubs Button */}
-              <div className="flex justify-end">
-                <button
-                  onClick={handleManageClubs}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Manage Clubs
-                </button>
-              </div>
+              {/* Manage Clubs Button - Only show for users with clubs or staff */}
+              {(user?.clubs?.length > 0 || user?.is_staff) && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleManageClubs}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Manage Clubs
+                  </button>
+                </div>
+              )}
 
               {/* Club Management Section */}
               {user?.is_staff && (

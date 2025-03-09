@@ -8,6 +8,7 @@ router.register(r'competitions', views.CompetitionViewSet, basename='competition
 router.register(r'clubs', views.ClubViewSet, basename='club')
 router.register(r'club-users', views.ClubUserViewSet, basename='club-user')
 router.register(r'game-scores', views.GameScoreViewSet, basename='game-score')
+router.register(r'club-applications', views.ClubApplicationViewSet, basename='club-application')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -20,6 +21,9 @@ urlpatterns = [
     path('clubs/<int:club_id>/add_user/', views.ClubViewSet.as_view({'post': 'add_user'})),
     path('clubs/<int:club_id>/remove_user/', views.ClubViewSet.as_view({'post': 'remove_user'})),
     path('clubs/<int:pk>/members/', views.ClubViewSet.as_view({'get': 'members'})),
+    path('clubs/<int:pk>/apply/', views.ClubViewSet.as_view({'post': 'apply'})),
     path('club-users/set_current_club/', views.ClubUserViewSet.as_view({'post': 'set_current_club', 'put': 'set_current_club'})),
     path('users/set-current-club/', views.ClubUserViewSet.as_view({'post': 'set_current_club'})),
+    path('club-applications/<int:pk>/approve/', views.ClubApplicationViewSet.as_view({'post': 'approve'})),
+    path('club-applications/<int:pk>/reject/', views.ClubApplicationViewSet.as_view({'post': 'reject'})),
 ] 

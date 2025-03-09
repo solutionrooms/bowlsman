@@ -37,6 +37,7 @@ export default function Home() {
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [postcode, setPostcode] = useState('');
   const [isLogin, setIsLogin] = useState(true);
   const [showClubSelection, setShowClubSelection] = useState(false);
   const [clubs, setClubs] = useState<Club[]>([]);
@@ -80,9 +81,8 @@ export default function Home() {
           setClubs(clubsResponse.data);
           setShowClubSelection(true);
         } else {
-          // User has no clubs, redirect to club creation
-          localStorage.removeItem('token');
-          setMessage('You need to create or join a club first.');
+          // User has no clubs, redirect to dashboard
+          router.push('/dashboard');
         }
       }
     } catch (error) {
@@ -120,7 +120,8 @@ export default function Home() {
             setClubs(response.data.clubs);
             setShowClubSelection(true);
           } else {
-            router.push('/club/create');
+            // Redirect to dashboard instead of club creation
+            router.push('/dashboard');
           }
         } else {
           setMessage(response.data.error || 'Login failed. Please try again.');
@@ -132,7 +133,8 @@ export default function Home() {
           password,
           email,
           first_name: firstName,
-          last_name: lastName
+          last_name: lastName,
+          postcode
         });
 
         if ('token' in response.data) {
@@ -211,7 +213,7 @@ export default function Home() {
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="bg-white p-8 rounded-lg shadow-md w-96">
         <h1 className="text-2xl font-bold mb-6 text-center">
-          {isLogin ? 'Login to Bowlsman' : 'Create an Account'}
+          {isLogin ? 'Login to BowlsHub' : 'Create an Account'}
         </h1>
         {message && <p className="mb-4 text-red-500">{message}</p>}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -264,6 +266,18 @@ export default function Home() {
                   id="lastName"
                   value={lastName}
                   onChange={(e) => handleInputChange(e, setLastName)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="postcode" className="block text-sm font-medium text-gray-700">
+                  Postcode
+                </label>
+                <input
+                  type="text"
+                  id="postcode"
+                  value={postcode}
+                  onChange={(e) => handleInputChange(e, setPostcode)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>

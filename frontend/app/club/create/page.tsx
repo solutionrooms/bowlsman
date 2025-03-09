@@ -5,17 +5,60 @@ import { useRouter } from 'next/navigation';
 import Navigation from '../../components/Navigation';
 import api from '../../../src/lib/axios';
 
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  is_staff: boolean;
+}
+
 export default function CreateClub() {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const checkUserPermissions = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          router.push('/');
+          return;
+        }
+
+        // Fetch user data to check if they are staff
+        const response = await api.get<{ user: User }>('/users/me/', {
+          headers: { Authorization: `Token ${token}` }
+        });
+
+        const userData = response.data.user;
+        setUser(userData);
+
+        // If not staff, redirect to dashboard
+        if (!userData.is_staff) {
+          setError('Only staff members can create clubs');
+          setTimeout(() => {
+            router.push('/dashboard');
+          }, 3000);
+        }
+      } catch (error) {
+        console.error('Error checking permissions:', error);
+        router.push('/');
+      }
+    };
+
+    checkUserPermissions();
+  }, [mounted, router]);
 
   const handleLogout = () => {
     if (mounted) {
@@ -33,6 +76,13 @@ export default function CreateClub() {
       const token = localStorage.getItem('token');
       if (!token) {
         router.push('/');
+        return;
+      }
+
+      // Double-check that user is staff
+      if (!user?.is_staff) {
+        setError('Only staff members can create clubs');
+        setLoading(false);
         return;
       }
 
@@ -56,6 +106,30 @@ export default function CreateClub() {
       setLoading(false);
     }
   };
+
+  // If user is not staff, show access denied message
+  if (user && !user.is_staff) {
+    return (
+      <>
+        <Navigation onLogout={handleLogout} />
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-md mx-auto bg-white rounded-lg shadow-md overflow-hidden">
+            <div className="px-6 py-4">
+              <h1 className="text-2xl font-bold mb-6 text-red-600">Access Denied</h1>
+              <p className="mb-4">Only staff members can create clubs.</p>
+              <p className="mb-4">You will be redirected to the dashboard...</p>
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+              >
+                Go to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -102,7 +176,7 @@ export default function CreateClub() {
               <div className="flex justify-between">
                 <button
                   type="button"
-                  onClick={() => router.push('/club/manage')}
+                  onClick={() => router.push('/dashboard')}
                   className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition"
                 >
                   Cancel

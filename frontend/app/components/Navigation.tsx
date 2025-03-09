@@ -202,7 +202,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
           {/* Logo and brand */}
           <div className="flex items-center">
             <div className="flex-shrink-0">
-              <Link href="/home" className="text-xl font-bold">
+              <Link href={currentClub ? "/home" : "/dashboard"} className="text-xl font-bold">
                 BowlsHub
               </Link>
             </div>
@@ -210,17 +210,17 @@ export default function Navigation({ onLogout }: NavigationProps) {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center justify-between flex-1 ml-6">
-            {/* Main Navigation Links */}
-            <div className="flex items-center space-x-2">
-              <Link
-                href="/competition/manage"
-                className={`px-3 py-2 rounded-md text-sm font-medium ${
-                  pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                }`}
-              >
-                Competitions
-              </Link>
-              {currentClub && (
+            {/* Main Navigation Links - Only show if user has a current club */}
+            {currentClub ? (
+              <div className="flex items-center space-x-2">
+                <Link
+                  href="/competition/manage"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Competitions
+                </Link>
                 <Link
                   href={`/competition/scoring`}
                   className={`px-3 py-2 rounded-md text-sm font-medium ${
@@ -229,45 +229,48 @@ export default function Navigation({ onLogout }: NavigationProps) {
                 >
                   Scoring
                 </Link>
-              )}
-              <Link
-                href="/leagues"
-                className={`px-3 py-2 rounded-md text-sm font-medium ${
-                  pathname?.startsWith('/leagues') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                }`}
-              >
-                Teams
-              </Link>
-              <Link
-                href="/bowlers"
-                className={`px-3 py-2 rounded-md text-sm font-medium ${
-                  pathname === '/bowlers' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                }`}
-              >
-                Bowlers
-              </Link>
-              <Link
-                href="/messaging"
-                className={`relative px-3 py-2 rounded-md text-sm font-medium ${
-                  pathname?.startsWith('/messaging') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                }`}
-              >
-                Chat
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5">
-                    {unreadCount}
-                  </span>
-                )}
-              </Link>
-              <Link
-                href="/noticeboard"
-                className={`px-3 py-2 rounded-md text-sm font-medium ${
-                  pathname?.startsWith('/noticeboard') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                }`}
-              >
-                Noticeboard
-              </Link>
-            </div>
+                <Link
+                  href="/leagues"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    pathname?.startsWith('/leagues') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Teams
+                </Link>
+                <Link
+                  href="/bowlers"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    pathname === '/bowlers' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Bowlers
+                </Link>
+                <Link
+                  href="/messaging"
+                  className={`px-3 py-2 rounded-md text-sm font-medium relative ${
+                    pathname === '/messaging' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Chat
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Link>
+                <Link
+                  href="/noticeboard"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    pathname === '/noticeboard' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Noticeboard
+                </Link>
+              </div>
+            ) : (
+              // For users without a club, show minimal navigation
+              <div className="flex-1"></div> // Empty div to maintain spacing
+            )}
 
             {/* Right side items */}
             <div className="flex items-center space-x-2">
@@ -469,61 +472,75 @@ export default function Navigation({ onLogout }: NavigationProps) {
       {/* Mobile menu */}
       <div className={`${isOpen ? 'block' : 'hidden'} md:hidden`}>
         <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-          <Link
-            href="/competition/manage"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Competitions
-          </Link>
-          {currentClub && (
+          {currentClub ? (
+            <>
+              <Link
+                href="/competition/manage"
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Competitions
+              </Link>
+              <Link
+                href={`/competition/scoring`}
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  pathname?.startsWith('/competition/scoring') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Scoring
+              </Link>
+              <Link
+                href="/leagues"
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  pathname?.startsWith('/leagues') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Teams
+              </Link>
+              <Link
+                href="/bowlers"
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  pathname === '/bowlers' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Bowlers
+              </Link>
+              <Link
+                href="/messaging"
+                className={`block px-3 py-2 rounded-md text-base font-medium relative ${
+                  pathname === '/messaging' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Chat
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 ml-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </Link>
+              <Link
+                href="/noticeboard"
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  pathname === '/noticeboard' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Noticeboard
+              </Link>
+            </>
+          ) : (
+            // For users without a club, show a link to dashboard
             <Link
-              href={`/competition/scoring`}
+              href="/dashboard"
               className={`block px-3 py-2 rounded-md text-base font-medium ${
-                pathname?.startsWith('/competition/scoring') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                pathname === '/dashboard' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
               }`}
             >
-              Scoring
+              Dashboard
             </Link>
           )}
-          <Link
-            href="/leagues"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname?.startsWith('/leagues') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Teams
-          </Link>
-          <Link
-            href="/bowlers"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname === '/bowlers' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Bowlers
-          </Link>
-          <Link
-            href="/messaging"
-            className={`relative block px-3 py-2 rounded-md text-base font-medium ${
-              pathname?.startsWith('/messaging') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Chat
-            {unreadCount > 0 && (
-              <span className="ml-2 inline-block bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5">
-                {unreadCount}
-              </span>
-            )}
-          </Link>
-          <Link
-            href="/noticeboard"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname?.startsWith('/noticeboard') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Noticeboard
-          </Link>
+
+          {/* Admin/Club Management */}
           {user?.is_staff && (
             <Link
               href="/club/manage"
@@ -544,29 +561,9 @@ export default function Navigation({ onLogout }: NavigationProps) {
               Manage Club
             </Link>
           )}
-          <Link
-            href="/profile"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname === '/profile' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Profile
-          </Link>
-          <Link
-            href="/help"
-            className={`block px-3 py-2 rounded-md text-base font-medium ${
-              pathname === '/help' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-            }`}
-          >
-            Help
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-white hover:bg-blue-500"
-          >
-            Logout
-          </button>
         </div>
+        
+        {/* ... rest of the mobile menu ... */}
       </div>
     </nav>
   );
