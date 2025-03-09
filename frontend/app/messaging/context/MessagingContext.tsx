@@ -1,96 +1,397 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import api from '../../../src/lib/axios';
+
+interface Chat {
+  id: number;
+  name: string | null;
+  chat_type: 'direct' | 'group' | 'team' | 'competition';
+  created_by: number;
+  created_by_username: string;
+  club: number;
+  competition: number | null;
+  created_at: string;
+  updated_at: string;
+  member_count: number;
+  unread_count: number;
+  last_message: {
+    id: number;
+    content: string;
+    sender: string;
+    created_at: string;
+  } | null;
+}
+
+interface ChatMember {
+  id: number;
+  chat: number;
+  user: number;
+  user_details: {
+    id: number;
+    username: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    full_name: string;
+  };
+  is_admin: boolean;
+  joined_at: string;
+  last_read_at: string | null;
+}
+
+interface ChatMessage {
+  id: number;
+  chat: number;
+  sender: number;
+  sender_details: {
+    id: number;
+    username: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    full_name: string;
+  };
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ChatDetail extends Chat {
+  members: ChatMember[];
+  messages: ChatMessage[];
+}
+
+interface Message {
+  id: number;
+  sender: number;
+  recipient: number | null;
+  subject: string;
+  content: string;
+  created_at: string;
+  is_read: boolean;
+  sender_name: string;
+  sender_full_name: string;
+  recipient_name: string | null;
+  recipient_full_name: string | null;
+  is_club_wide: boolean;
+}
+
+// Define response types for API calls
+interface UnreadCountResponse {
+  unread_count: number;
+}
 
 interface MessagingContextType {
   unreadCount: number;
-  fetchUnreadCount: () => Promise<void>;
-}
-
-interface UnreadMessage {
-  id: number;
-  // Add other message properties as needed
+  fetchUnreadCount: (clubId: number) => Promise<void>;
+  chats: Chat[];
+  activeChat: ChatDetail | null;
+  fetchChats: (clubId: number) => Promise<void>;
+  fetchChat: (chatId: number) => Promise<void>;
+  createChat: (data: any) => Promise<Chat>;
+  sendMessage: (chatId: number, content: string) => Promise<ChatMessage>;
+  markChatAsRead: (chatId: number) => Promise<void>;
+  addMemberToChat: (chatId: number, userId: number) => Promise<void>;
+  removeMemberFromChat: (chatId: number, userId: number) => Promise<void>;
+  // Legacy message methods
+  messages: Message[];
+  fetchMessages: (clubId: number) => Promise<void>;
+  sendLegacyMessage: (data: any) => Promise<Message>;
+  markMessageAsRead: (messageId: number) => Promise<void>;
 }
 
 const MessagingContext = createContext<MessagingContextType | undefined>(undefined);
 
-export function MessagingProvider({ children }: { children: ReactNode }) {
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [currentClub, setCurrentClub] = useState<number | null>(null);
+export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [activeChat, setActiveChat] = useState<ChatDetail | null>(null);
 
-  useEffect(() => {
-    // Get current club from localStorage
-    if (typeof window !== 'undefined') {
-      const storedClub = localStorage.getItem('currentClub');
-      if (storedClub) {
-        try {
-          const club = JSON.parse(storedClub);
-          setCurrentClub(club.id);
-        } catch (e) {
-          // Handle potential JSON parse error
-          console.error('Error parsing current club:', e);
-        }
-      }
+  const fetchUnreadCount = useCallback(async (clubId: number) => {
+    try {
+      const response = await api.get<UnreadCountResponse>(`/api/unread-count/?club_id=${clubId}`);
+      setUnreadCount(response.data.unread_count);
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
     }
-
-    // Listen for club change events
-    const handleClubChange = (event: CustomEvent) => {
-      if (event.detail?.club?.id) {
-        setCurrentClub(event.detail.club.id);
-      }
-    };
-
-    window.addEventListener('clubChanged', handleClubChange as EventListener);
-
-    // Initial fetch
-    fetchUnreadCount();
-
-    // Set up polling for unread messages (every 60 seconds)
-    const interval = setInterval(fetchUnreadCount, 60000);
-
-    return () => {
-      window.removeEventListener('clubChanged', handleClubChange as EventListener);
-      clearInterval(interval);
-    };
   }, []);
 
-  // Fetch unread count whenever current club changes
-  useEffect(() => {
-    if (currentClub) {
-      fetchUnreadCount();
+  const fetchMessages = useCallback(async (clubId: number) => {
+    try {
+      const response = await api.get<Message[]>(`/api/messages/?club_id=${clubId}`);
+      setMessages(response.data);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
     }
-  }, [currentClub]);
+  }, []);
 
-  const fetchUnreadCount = async () => {
-    // Exit early if we're server-side rendering or no club is selected
-    if (typeof window === 'undefined' || !currentClub) return;
+  const sendLegacyMessage = useCallback(async (data: any): Promise<Message> => {
+    try {
+      const response = await api.post<Message>('/api/messages/', data);
+      // Update messages list with the new message
+      setMessages(prevMessages => [response.data, ...prevMessages]);
+      return response.data;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      throw error;
+    }
+  }, []);
+
+  const markMessageAsRead = useCallback(async (messageId: number): Promise<void> => {
+    try {
+      await api.post(`/api/read-message/${messageId}/`);
+      // Update the message in the list
+      setMessages(prevMessages =>
+        prevMessages.map(msg =>
+          msg.id === messageId ? { ...msg, is_read: true } : msg
+        )
+      );
+      // Update unread count
+      setUnreadCount(prevCount => Math.max(0, prevCount - 1));
+    } catch (error) {
+      console.error('Error marking message as read:', error);
+    }
+  }, []);
+
+  // New chat methods
+  const fetchChats = useCallback(async (clubId: number) => {
+    try {
+      const response = await api.get<Chat[]>(`/api/chats/?club_id=${clubId}`);
+      setChats(response.data);
+    } catch (error) {
+      console.error('Error fetching chats:', error);
+    }
+  }, []);
+
+  const fetchChat = useCallback(async (chatId: number) => {
+    if (!chatId) {
+      console.error('No chat ID provided to fetchChat');
+      return;
+    }
     
     try {
-      console.log('Fetching unread message count for club:', currentClub);
-      const response = await api.get<UnreadMessage[]>('messages/unread', {
-        params: { club_id: currentClub }
-      });
+      console.log(`Fetching chat ${chatId}`);
       
-      console.log('Unread messages:', response.data.length);
-      setUnreadCount(response.data.length);
-    } catch (err) {
-      console.error('Error fetching unread count:', err);
-      setUnreadCount(0);
+      // Get the current club ID from localStorage
+      let clubId = null;
+      if (typeof window !== 'undefined') {
+        const storedClub = localStorage.getItem('currentClub');
+        if (storedClub) {
+          try {
+            const club = JSON.parse(storedClub);
+            clubId = club.id;
+          } catch (e) {
+            console.error('Error parsing current club:', e);
+          }
+        }
+      }
+      
+      // Add club_id as a query parameter to ensure proper permissions
+      const response = await api.get<ChatDetail>(
+        `/api/chats/${chatId}/`, 
+        { params: { club_id: clubId } }
+      );
+      
+      setActiveChat(response.data);
+    } catch (error) {
+      console.error('Error fetching chat details:', error);
+      // Clear the active chat to prevent showing stale data
+      setActiveChat(null);
+      throw error;
     }
-  };
+  }, []);
+
+  const createChat = useCallback(async (data: any): Promise<Chat> => {
+    try {
+      const response = await api.post<Chat>('/api/chats/', data);
+      // Update chats list with the new chat
+      setChats(prevChats => [response.data, ...prevChats]);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating chat:', error);
+      throw error;
+    }
+  }, []);
+
+  const sendMessage = useCallback(async (chatId: number, content: string): Promise<ChatMessage> => {
+    if (!chatId || !content.trim()) {
+      throw new Error('Chat ID and content are required');
+    }
+    
+    try {
+      console.log(`Sending message to chat ${chatId}: ${content}`);
+      
+      // Get the current club ID from localStorage
+      let clubId = null;
+      if (typeof window !== 'undefined') {
+        const storedClub = localStorage.getItem('currentClub');
+        if (storedClub) {
+          try {
+            const club = JSON.parse(storedClub);
+            clubId = club.id;
+          } catch (e) {
+            console.error('Error parsing current club:', e);
+          }
+        }
+      }
+      
+      // The correct URL format for nested resources in DRF
+      const response = await api.post<ChatMessage>(
+        `/api/chats/${chatId}/messages/`, 
+        { content, club_id: clubId }
+      );
+      
+      // Update active chat with the new message
+      if (activeChat && activeChat.id === chatId) {
+        setActiveChat(prevChat => {
+          if (!prevChat) return null;
+          return {
+            ...prevChat,
+            messages: [...prevChat.messages, response.data]
+          };
+        });
+      } else {
+        // If the active chat isn't loaded yet, fetch it
+        try {
+          await fetchChat(chatId);
+        } catch (err) {
+          console.error('Error fetching chat after sending message:', err);
+          // Continue anyway - the message was sent successfully
+        }
+      }
+      
+      // Update the chat in the list to show the latest message
+      setChats(prevChats =>
+        prevChats.map(chat => {
+          if (chat.id === chatId) {
+            return {
+              ...chat,
+              last_message: {
+                id: response.data.id,
+                content: response.data.content.length > 50 
+                  ? response.data.content.substring(0, 50) + '...' 
+                  : response.data.content,
+                sender: response.data.sender_details.username,
+                created_at: response.data.created_at
+              },
+              updated_at: new Date().toISOString()
+            };
+          }
+          return chat;
+        })
+      );
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      throw error;
+    }
+  }, [activeChat, fetchChat]);
+
+  const markChatAsRead = useCallback(async (chatId: number): Promise<void> => {
+    if (!chatId) return;
+    
+    try {
+      console.log(`Marking chat ${chatId} as read`);
+      
+      // Try with the correct URL format for DRF actions
+      await api.post(`/api/chats/${chatId}/mark_as_read/`);
+      
+      // Update the chat in the list
+      setChats(prevChats =>
+        prevChats.map(chat =>
+          chat.id === chatId ? { ...chat, unread_count: 0 } : chat
+        )
+      );
+      
+      // Recalculate total unread count
+      const totalUnread = chats.reduce((total, chat) => {
+        return total + (chat.id === chatId ? 0 : chat.unread_count);
+      }, 0);
+      
+      setUnreadCount(totalUnread);
+    } catch (error) {
+      console.error('Error marking chat as read:', error);
+      // Don't throw the error to prevent UI disruption
+    }
+  }, [chats]);
+
+  const addMemberToChat = useCallback(async (chatId: number, userId: number): Promise<void> => {
+    try {
+      await api.post(`/api/chats/${chatId}/add_member/`, { user_id: userId });
+      
+      // Refresh the active chat to get updated members
+      if (activeChat && activeChat.id === chatId) {
+        fetchChat(chatId);
+      }
+    } catch (error) {
+      console.error('Error adding member to chat:', error);
+      throw error;
+    }
+  }, [activeChat, fetchChat]);
+
+  const removeMemberFromChat = useCallback(async (chatId: number, userId: number): Promise<void> => {
+    try {
+      await api.post(`/api/chats/${chatId}/remove_member/`, { user_id: userId });
+      
+      // Refresh the active chat to get updated members
+      if (activeChat && activeChat.id === chatId) {
+        fetchChat(chatId);
+      }
+    } catch (error) {
+      console.error('Error removing member from chat:', error);
+      throw error;
+    }
+  }, [activeChat, fetchChat]);
+
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = React.useMemo(() => ({
+    unreadCount,
+    fetchUnreadCount,
+    messages,
+    fetchMessages,
+    sendLegacyMessage,
+    markMessageAsRead,
+    chats,
+    activeChat,
+    fetchChats,
+    fetchChat,
+    createChat,
+    sendMessage,
+    markChatAsRead,
+    addMemberToChat,
+    removeMemberFromChat
+  }), [
+    unreadCount,
+    fetchUnreadCount,
+    messages,
+    fetchMessages,
+    sendLegacyMessage,
+    markMessageAsRead,
+    chats,
+    activeChat,
+    fetchChats,
+    fetchChat,
+    createChat,
+    sendMessage,
+    markChatAsRead,
+    addMemberToChat,
+    removeMemberFromChat
+  ]);
 
   return (
-    <MessagingContext.Provider value={{ unreadCount, fetchUnreadCount }}>
+    <MessagingContext.Provider value={contextValue}>
       {children}
     </MessagingContext.Provider>
   );
-}
+};
 
-export function useMessaging() {
+export const useMessaging = () => {
   const context = useContext(MessagingContext);
   if (context === undefined) {
     throw new Error('useMessaging must be used within a MessagingProvider');
   }
   return context;
-} 
+}; 

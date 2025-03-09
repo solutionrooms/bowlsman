@@ -216,7 +216,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
                     pathname?.startsWith('/messaging') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
                   }`}
                 >
-                  Messages
+                  Chat
                   {unreadCount > 0 && (
                     <span className="ml-1 bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5">
                       {unreadCount}
@@ -404,7 +404,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
               pathname?.startsWith('/messaging') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
             }`}
           >
-            Messages
+            Chat
             {unreadCount > 0 && (
               <span className="ml-2 bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5">
                 {unreadCount}
