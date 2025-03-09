@@ -447,33 +447,27 @@ export default function ManageCompetitions() {
   };
 
   const handleStartCompetition = async (competition: Competition) => {
-    console.log("Starting competition with ID:", competition.id, "Current status:", competition.status);
-    if (!confirm('Are you sure you want to start this competition? This will initialize scoring for all matches.')) return;
-
     try {
-      console.log("Making API call to start competition");
-      const response = await api.post(`/competitions/${competition.id}/start_competition/`);
-      console.log("API response:", response.data);
+      const response = await api.post(`/competitions/${competition.id}/start/`);
       
-      notification.success({
-        message: 'Competition Started',
-        description: 'Competition has been successfully started',
-        duration: 4,
+      // Update the competition status locally
+      const updatedCompetitions = competitions.map(comp => {
+        if (comp.id === competition.id) {
+          return {
+            ...comp,
+            status: 'in_progress' as 'in_progress' // Type assertion to fix the error
+          };
+        }
+        return comp;
       });
       
-      // Update competition status to in_progress
-      const updatedCompetitions = competitions.map(comp => 
-        comp.id === competition.id ? { ...comp, status: 'in_progress' } : comp
-      );
       console.log("Updated competition status to in_progress");
       setCompetitions(updatedCompetitions);
     } catch (error) {
       console.error('Error starting competition:', error);
-      
       notification.error({
-        message: 'Start Error',
-        description: 'Failed to start competition',
-        duration: 4,
+        message: 'Error',
+        description: 'Failed to start competition. Please try again.'
       });
     }
   };
@@ -550,14 +544,14 @@ export default function ManageCompetitions() {
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white shadow rounded-lg p-6">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <PageHeading 
                 title="Manage Competitions" 
                 infoText={pageDescriptions.competitions}
               />
-              <div className="flex items-center space-x-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto">
                 {userClubs.length > 1 && (
-                  <div>
+                  <div className="w-full sm:w-auto">
                     <select
                       value={currentClub?.id || ''}
                       onChange={async (e) => {
@@ -592,7 +586,7 @@ export default function ManageCompetitions() {
                           }
                         }
                       }}
-                      className="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                     >
                       {userClubs.map(club => (
                         <option key={club.id} value={club.id}>{club.name}</option>
@@ -602,7 +596,7 @@ export default function ManageCompetitions() {
                 )}
                 <button 
                   onClick={() => router.push('/competition/create')} 
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   Create Competition
                 </button>
@@ -718,7 +712,6 @@ export default function ManageCompetitions() {
                           
                           {openMenuId === competition.id && (
                             <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10" data-menu-content>
-                              {console.log("Rendering menu for competition:", competition.id, "with status:", competition.status)}
                               <div className="py-1" role="menu">
                                 <button
                                   onClick={() => {

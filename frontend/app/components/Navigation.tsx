@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import api from '../../src/lib/axios';
@@ -30,12 +30,20 @@ export default function Navigation({ onLogout }: NavigationProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [clubDropdownOpen, setClubDropdownOpen] = useState(false);
+  const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
+  const [mobileClubOpen, setMobileClubOpen] = useState(false);
   const [currentClub, setCurrentClub] = useState<Club | null>(null);
   const [userClubs, setUserClubs] = useState<Club[]>([]);
   const [allClubs, setAllClubs] = useState<Club[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const { unreadCount } = useMessaging();
+  
+  // Refs for dropdown containers
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+  const clubDropdownRef = useRef<HTMLDivElement>(null);
+  const mobileProfileRef = useRef<HTMLDivElement>(null);
+  const mobileClubRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Create a flag to prevent multiple calls
@@ -130,6 +138,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
       
       setCurrentClub(response.data.club);
       setClubDropdownOpen(false);
+      setMobileClubOpen(false);
       setMessage(null); // Clear any previous error messages
       
       // Safely dispatch event only in browser context
@@ -154,113 +163,149 @@ export default function Navigation({ onLogout }: NavigationProps) {
     }
   };
 
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // Check if click is outside each dropdown
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+      
+      if (clubDropdownRef.current && !clubDropdownRef.current.contains(event.target as Node)) {
+        setClubDropdownOpen(false);
+      }
+      
+      if (mobileProfileRef.current && !mobileProfileRef.current.contains(event.target as Node)) {
+        setMobileProfileOpen(false);
+      }
+      
+      if (mobileClubRef.current && !mobileClubRef.current.contains(event.target as Node)) {
+        setMobileClubOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Toggle dropdown state
+  const toggleDropdown = (setter: React.Dispatch<React.SetStateAction<boolean>>) => {
+    setter(prev => !prev);
+  };
+
   return (
-    <nav className="bg-blue-600 text-white">
+    <nav className="bg-blue-600 text-white shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
+          {/* Logo and brand */}
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <Link href="/home" className="text-xl font-bold">
                 Bowlsman
               </Link>
             </div>
-            <div className="hidden md:block">
-              <div className="ml-10 flex items-baseline space-x-4">
-                <Link
-                  href="/home"
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === '/home' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                  }`}
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/competition/manage"
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                  }`}
-                >
-                  Competitions
-                </Link>
-                {currentClub && (
-                  <>
-                    <Link
-                      href={`/competition/scoring`}
-                      className={`px-3 py-2 rounded-md text-sm font-medium ${
-                        pathname?.startsWith('/competition/scoring') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                      }`}
-                    >
-                      Scoring
-                    </Link>
-                  </>
-                )}
-                <Link
-                  href="/leagues"
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname?.startsWith('/leagues') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                  }`}
-                >
-                  Leagues
-                </Link>
-                <Link
-                  href="/bowlers"
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === '/bowlers' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                  }`}
-                >
-                  Bowlers
-                </Link>
-                <Link
-                  href="/messaging"
-                  className={`relative px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname?.startsWith('/messaging') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                  }`}
-                >
-                  Chat
-                  {unreadCount > 0 && (
-                    <span className="ml-1 bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5">
-                      {unreadCount}
-                    </span>
-                  )}
-                </Link>
-                <Link
-                  href="/noticeboard"
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname?.startsWith('/noticeboard') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                  }`}
-                >
-                  Noticeboard
-                </Link>
-                {user?.is_staff && (
-                  <Link
-                    href="/club/manage"
-                    className={`px-3 py-2 rounded-md text-sm font-medium ${
-                      pathname === '/club/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                    }`}
-                  >
-                    Manage Clubs
-                  </Link>
-                )}
-                {!user?.is_staff && userClubs.some(club => club.is_admin) && currentClub && (
-                  <Link
-                    href={`/club/${currentClub.id}`}
-                    className={`px-3 py-2 rounded-md text-sm font-medium ${
-                      pathname === `/club/${currentClub.id}` ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                    }`}
-                  >
-                    Manage Club
-                  </Link>
-                )}
-              </div>
-            </div>
           </div>
-          <div className="hidden md:block">
-            <div className="ml-4 flex items-center md:ml-6">
+
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center justify-between flex-1 ml-6">
+            {/* Main Navigation Links */}
+            <div className="flex items-center space-x-2">
+              <Link
+                href="/home"
+                className={`px-3 py-2 rounded-md text-sm font-medium ${
+                  pathname === '/home' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/competition/manage"
+                className={`px-3 py-2 rounded-md text-sm font-medium ${
+                  pathname === '/competition/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Competitions
+              </Link>
+              {currentClub && (
+                <Link
+                  href={`/competition/scoring`}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    pathname?.startsWith('/competition/scoring') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Scoring
+                </Link>
+              )}
+              <Link
+                href="/leagues"
+                className={`px-3 py-2 rounded-md text-sm font-medium ${
+                  pathname?.startsWith('/leagues') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Leagues
+              </Link>
+              <Link
+                href="/bowlers"
+                className={`px-3 py-2 rounded-md text-sm font-medium ${
+                  pathname === '/bowlers' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Bowlers
+              </Link>
+              <Link
+                href="/messaging"
+                className={`relative px-3 py-2 rounded-md text-sm font-medium ${
+                  pathname?.startsWith('/messaging') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Chat
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5">
+                    {unreadCount}
+                  </span>
+                )}
+              </Link>
+              <Link
+                href="/noticeboard"
+                className={`px-3 py-2 rounded-md text-sm font-medium ${
+                  pathname?.startsWith('/noticeboard') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                }`}
+              >
+                Noticeboard
+              </Link>
+            </div>
+
+            {/* Right side items */}
+            <div className="flex items-center space-x-2">
+              {/* Admin/Club Management */}
+              {user?.is_staff && (
+                <Link
+                  href="/club/manage"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    pathname === '/club/manage' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Manage Clubs
+                </Link>
+              )}
+              {!user?.is_staff && userClubs.some(club => club.is_admin) && currentClub && (
+                <Link
+                  href={`/club/${currentClub.id}`}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${
+                    pathname === `/club/${currentClub.id}` ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Manage Club
+                </Link>
+              )}
+
               {/* Club Selector */}
               {currentClub && (
-                <div className="relative mr-4">
+                <div className="relative" ref={clubDropdownRef}>
                   <button
-                    onClick={() => setClubDropdownOpen(!clubDropdownOpen)}
+                    onClick={() => toggleDropdown(setClubDropdownOpen)}
                     className="flex items-center px-3 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
                   >
                     {currentClub.name}
@@ -288,9 +333,9 @@ export default function Navigation({ onLogout }: NavigationProps) {
               )}
 
               {/* User Menu */}
-              <div className="relative">
+              <div className="relative" ref={userDropdownRef}>
                 <button
-                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  onClick={() => toggleDropdown(setDropdownOpen)}
                   className="flex items-center px-3 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
                 >
                   {user?.username}
@@ -330,7 +375,78 @@ export default function Navigation({ onLogout }: NavigationProps) {
           </div>
           
           {/* Mobile menu button */}
-          <div className="-mr-2 flex md:hidden">
+          <div className="flex md:hidden items-center space-x-2">
+            {/* Mobile Club Selector */}
+            {currentClub && (
+              <div className="relative" ref={mobileClubRef}>
+                <button
+                  onClick={() => toggleDropdown(setMobileClubOpen)}
+                  className="flex items-center px-2 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
+                >
+                  {currentClub.name.length > 10 ? `${currentClub.name.substring(0, 10)}...` : currentClub.name}
+                  <svg xmlns="http://www.w3.org/2000/svg" className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {mobileClubOpen && (
+                  <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                    <div className="py-1" role="menu">
+                      {userClubs.map((club: Club) => (
+                        <button
+                          key={club.id}
+                          onClick={() => handleClubChange(club.id)}
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          role="menuitem"
+                        >
+                          {club.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Mobile Profile Menu */}
+            <div className="relative" ref={mobileProfileRef}>
+              <button
+                onClick={() => toggleDropdown(setMobileProfileOpen)}
+                className="flex items-center px-2 py-1 rounded-md text-sm font-medium bg-blue-700 hover:bg-blue-800"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </button>
+              {mobileProfileOpen && (
+                <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                  <div className="py-1" role="menu">
+                    <Link
+                      href="/profile"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Profile
+                    </Link>
+                    <Link
+                      href="/help"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Help
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Mobile hamburger menu */}
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="inline-flex items-center justify-center p-2 rounded-md text-white hover:bg-blue-700 focus:outline-none"
@@ -378,16 +494,14 @@ export default function Navigation({ onLogout }: NavigationProps) {
             Competitions
           </Link>
           {currentClub && (
-            <>
-              <Link
-                href={`/competition/scoring`}
-                className={`block px-3 py-2 rounded-md text-base font-medium ${
-                  pathname?.startsWith('/competition/scoring') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
-                }`}
-              >
-                Scoring
-              </Link>
-            </>
+            <Link
+              href={`/competition/scoring`}
+              className={`block px-3 py-2 rounded-md text-base font-medium ${
+                pathname?.startsWith('/competition/scoring') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+              }`}
+            >
+              Scoring
+            </Link>
           )}
           <Link
             href="/leagues"
@@ -413,7 +527,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
           >
             Chat
             {unreadCount > 0 && (
-              <span className="ml-2 bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5">
+              <span className="ml-2 inline-block bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-0.5">
                 {unreadCount}
               </span>
             )}
@@ -446,6 +560,28 @@ export default function Navigation({ onLogout }: NavigationProps) {
               Manage Club
             </Link>
           )}
+          <Link
+            href="/profile"
+            className={`block px-3 py-2 rounded-md text-base font-medium ${
+              pathname === '/profile' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+            }`}
+          >
+            Profile
+          </Link>
+          <Link
+            href="/help"
+            className={`block px-3 py-2 rounded-md text-base font-medium ${
+              pathname === '/help' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+            }`}
+          >
+            Help
+          </Link>
+          <button
+            onClick={handleLogout}
+            className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-white hover:bg-blue-500"
+          >
+            Logout
+          </button>
         </div>
       </div>
     </nav>
