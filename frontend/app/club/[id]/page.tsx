@@ -737,7 +737,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
               <h3 className="text-lg font-semibold mb-4">Add Member</h3>
               <div className="relative">
                 <input
-                  type="text"
+                  type="search"
                   value={newPlayerName}
                   onChange={(e) => {
                     setNewPlayerName(e.target.value);
@@ -746,6 +746,8 @@ export default function ClubDetail({ params }: ClubDetailProps) {
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   placeholder="Search for a player or enter guest name"
                   autoFocus
+                  autoComplete="off"
+                  data-lpignore="true"
                 />
                 {showUserDropdown && (
                   <div className="absolute z-10 w-full mt-1 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">

@@ -1,9 +1,11 @@
 ---
-description: All code
+description: All code. All testing. All Deployment. Everything.
 globs: *
-alwaysApply: false
+alwaysApply: true
 ---
 
 # principles
+- never run django outside of the backend container. e.g. "docker compose exec backend {command}"
+- never run npm or any node commands outside of the frontend container. e.g. "docker compose exec frontend {command}"
 - The code needs to be portable to a remote server. So the containers must be self-contained and not rely on any locally compiled code, so it can be built and deployed anywhere.
 

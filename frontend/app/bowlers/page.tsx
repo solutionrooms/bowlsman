@@ -244,10 +244,15 @@ export default function Bowlers() {
                   </div>
                   <input
                     type="search"
-                    className="block w-full p-4 pl-10 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Search by name or username..."
+                    className="block w-full p-4 pl-10 text-sm border border-gray-300 rounded-md bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Filter bowlers list..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-form-type="other"
+                    data-1p-ignore="true"
+                    name="bowlers-filter-query"
                   />
                 </div>
               </div>

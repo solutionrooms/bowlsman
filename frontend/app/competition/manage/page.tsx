@@ -100,6 +100,11 @@ export default function ManageCompetitions() {
   
   useEffect(() => {
     setMounted(true);
+    
+    // Close any open menu when component unmounts
+    return () => {
+      setOpenMenuId(null);
+    };
   }, []);
 
   // Add click outside handler
@@ -127,11 +132,14 @@ export default function ManageCompetitions() {
     if (openMenuId !== null) {
       // Use mousedown for better mobile compatibility
       document.addEventListener('mousedown', handleClickOutside);
+      // Also add touchstart for mobile devices
+      document.addEventListener('touchstart', handleClickOutside as EventListener);
     }
     
     // Clean up event listener
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as EventListener);
     };
   }, [openMenuId]);
 
@@ -448,7 +456,7 @@ export default function ManageCompetitions() {
 
   const handleStartCompetition = async (competition: Competition) => {
     try {
-      const response = await api.post(`/competitions/${competition.id}/start/`);
+      const response = await api.post(`/competitions/${competition.id}/start_competition/`);
       
       // Update the competition status locally
       const updatedCompetitions = competitions.map(comp => {
@@ -481,6 +489,7 @@ export default function ManageCompetitions() {
     // Prevent event from bubbling up to parent elements
     if (event) {
       event.stopPropagation();
+      event.preventDefault();
     }
     
     // Toggle the menu open/closed state
@@ -711,7 +720,7 @@ export default function ManageCompetitions() {
                           </button>
                           
                           {openMenuId === competition.id && (
-                            <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10" data-menu-content>
+                            <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50" data-menu-content>
                               <div className="py-1" role="menu">
                                 <button
                                   onClick={() => {
@@ -844,7 +853,7 @@ export default function ManageCompetitions() {
                       </button>
                       
                       {openMenuId === competition.id && (
-                        <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10" data-menu-content>
+                        <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50" data-menu-content>
                           <div className="py-1" role="menu">
                             <button
                               onClick={() => {
@@ -1261,7 +1270,7 @@ export default function ManageCompetitions() {
                       <>
                         <div className="relative">
                           <input
-                            type="text"
+                            type="search"
                             value={newPlayerName}
                             onChange={(e) => {
                               setNewPlayerName(e.target.value);
@@ -1270,6 +1279,8 @@ export default function ManageCompetitions() {
                             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             placeholder="Search for a player or enter guest name"
                             autoFocus
+                            autoComplete="off"
+                            data-lpignore="true"
                           />
                           {showUserDropdown && (
                             <div className="absolute z-10 w-full mt-1 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">
@@ -1403,7 +1414,7 @@ export default function ManageCompetitions() {
                       New Player
                     </label>
                     <input
-                      type="text"
+                      type="search"
                       value={newPlayerName}
                       onChange={(e) => {
                         setNewPlayerName(e.target.value);
@@ -1411,6 +1422,8 @@ export default function ManageCompetitions() {
                       }}
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                       placeholder="Search for a player or enter guest name"
+                      autoComplete="off"
+                      data-lpignore="true"
                     />
                     {showUserDropdown && (
                       <div className="absolute z-10 w-full mt-1 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">

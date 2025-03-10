@@ -150,11 +150,13 @@ export default function ManageUsers() {
 
             <div className="mb-4">
               <input
-                type="text"
+                type="search"
                 placeholder="Search users..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                autoComplete="off"
+                data-lpignore="true"
               />
             </div>
             
