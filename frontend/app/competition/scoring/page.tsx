@@ -166,6 +166,7 @@ export default function ScoringSelectionPage() {
           title="Competition Scoring" 
           infoText={pageDescriptions.competitionScoring}
           className="text-2xl font-bold mb-6"
+          helpHref="/help/content/scoring"
         />
         
         {error && (

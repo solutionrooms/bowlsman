@@ -186,6 +186,7 @@ export default function LeaguesPage() {
           <PageHeading 
             title="Teams" 
             infoText={pageDescriptions.leagues}
+            helpHref="/help/content/leagues"
           />
           <div className="flex space-x-2">
             {isStaff && (

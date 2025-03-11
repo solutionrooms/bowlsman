@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '../components/Navigation';
 import api from '../../src/lib/axios';
+import { useMessaging } from '../messaging/context/MessagingContext';
 
 interface Bowler {
   id: number;
@@ -41,6 +42,7 @@ export default function Bowlers() {
   const [mounted, setMounted] = useState(false);
   const [currentClub, setCurrentClub] = useState<any>(null);
   const router = useRouter();
+  const { findExistingChat, createChat } = useMessaging();
 
   useEffect(() => {
     setMounted(true);
@@ -141,25 +143,56 @@ export default function Bowlers() {
       
       console.log('Starting chat with user ID:', userId);
       
-      // Create a direct chat with the selected user
-      const response = await api.post<{id: number}>('/api/chats/', {
-        chat_type: 'direct',
-        club_id: currentClub.id,
-        members: [userId]  // This is the correct format - just the array of user IDs
-      }, {
-        headers: { Authorization: `Token ${token}` }
-      });
-      
-      console.log('Chat created:', response.data);
-      
-      // Navigate to the chat
-      if (response.data && response.data.id) {
-        router.push(`/messaging?chat=${response.data.id}`);
-      } else {
-        alert('Failed to create chat. Please try again.');
+      try {
+        // Attempt to find an existing chat with this user
+        const existingChatId = await findExistingChat(currentClub.id, userId);
+        
+        if (existingChatId) {
+          // Navigate to the existing chat
+          console.log('Using existing chat:', existingChatId);
+          router.push(`/messaging?chat=${existingChatId}`);
+          return;
+        }
+        
+        // Create a direct chat with the selected user
+        const chatData = {
+          chat_type: 'direct',
+          club_id: currentClub.id,
+          members: [userId]
+        };
+        
+        console.log('Creating new chat with data:', chatData);
+        const newChat = await createChat(chatData);
+        console.log('Chat created or found:', newChat);
+        
+        // Navigate to the chat
+        router.push(`/messaging?chat=${newChat.id}`);
+      } catch (error: any) {
+        console.error('Error handling chat:', error);
+        
+        // If we get an error that suggests a duplicate chat, try to find the existing one again
+        if (error.response && error.response.data && 
+            typeof error.response.data.error === 'string' &&
+            (error.response.data.error.includes('already exists') || 
+             error.response.data.error.includes('duplicate key'))) {
+          
+          console.log('Got duplicate key error, retrying to find existing chat');
+          
+          // Wait a moment and try again
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const retryExistingChatId = await findExistingChat(currentClub.id, userId);
+          
+          if (retryExistingChatId) {
+            console.log('Found existing chat after error:', retryExistingChatId);
+            router.push(`/messaging?chat=${retryExistingChatId}`);
+            return;
+          }
+        }
+        
+        alert('Failed to open chat. Please try again.');
       }
-    } catch (error) {
-      console.error('Error creating chat:', error);
+    } catch (error: any) {
+      console.error('Error starting chat:', error);
       alert('Failed to create chat. Please try again.');
     }
   };

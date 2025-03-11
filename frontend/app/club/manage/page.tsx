@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '../../components/Navigation';
+import PageHeading from '../../components/PageHeading';
+import pageDescriptions from '../../utils/pageDescriptions';
 import api from '../../../src/lib/axios';
 
 export default function ManageClubs() {
@@ -89,7 +91,10 @@ export default function ManageClubs() {
       <Navigation onLogout={handleLogout} />
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Manage Clubs</h1>
+          <PageHeading 
+            title="Manage Clubs" 
+            helpHref="/help/content/club-management"
+          />
           <button
             onClick={handleCreateClub}
             className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition"

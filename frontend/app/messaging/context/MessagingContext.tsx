@@ -35,6 +35,7 @@ interface ChatMember {
     first_name: string;
     last_name: string;
     full_name: string;
+    avatar?: string;
   };
   is_admin: boolean;
   joined_at: string;
@@ -52,6 +53,9 @@ interface ChatMessage {
     first_name: string;
     last_name: string;
     full_name: string;
+    avatar?: string;
+    is_admin?: boolean;
+    club_role?: string;
   };
   content: string;
   image: string | null;
@@ -93,6 +97,7 @@ interface MessagingContextType {
   fetchChats: (clubId: number) => Promise<void>;
   fetchChat: (chatId: number) => Promise<void>;
   createChat: (data: any) => Promise<Chat>;
+  findExistingChat: (clubId: number, userId: number) => Promise<number | null>;
   sendMessage: (chatId: number, content: string, image?: File) => Promise<ChatMessage>;
   markChatAsRead: (chatId: number) => Promise<void>;
   addMemberToChat: (chatId: number, userId: number) => Promise<void>;
@@ -206,17 +211,137 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, []);
 
-  const createChat = useCallback(async (data: any): Promise<Chat> => {
+  // New function to find existing direct chat with a user
+  const findExistingChat = useCallback(async (clubId: number, userId: number): Promise<number | null> => {
     try {
+      console.log(`Searching for existing chat between club ${clubId} and user ${userId}`);
+      
+      // First, get all chats for the club
+      const response = await api.get<Chat[]>(`/api/chats/?club_id=${clubId}`);
+      const allChats = response.data;
+      console.log(`Found ${allChats.length} total chats, filtering to direct chats`);
+      
+      // Filter to direct chats
+      const directChats = allChats.filter(chat => chat.chat_type === 'direct');
+      console.log(`Found ${directChats.length} direct chats`);
+      
+      // For each direct chat, check if it's with the specified user
+      for (const chat of directChats) {
+        console.log(`Checking chat ${chat.id}`);
+        try {
+          // Get detailed chat info to see the members
+          const detailResponse = await api.get<ChatDetail>(`/api/chats/${chat.id}/`);
+          const chatDetail = detailResponse.data;
+          
+          // Check if the user is a member of this chat
+          const members = chatDetail.members || [];
+          console.log(`Chat ${chat.id} has ${members.length} members`);
+          
+          // Log member IDs for debugging
+          const memberIds = members.map(m => 
+            typeof m.user === 'number' ? m.user : 
+            (m.user_details ? m.user_details.id : 'unknown')
+          );
+          console.log(`Member IDs in chat ${chat.id}:`, memberIds);
+          
+          const userIsMember = members.some(member => {
+            // Check all possible ways the user ID might be represented
+            if (member.user === userId) return true;
+            if (member.user_details && member.user_details.id === userId) return true;
+            return false;
+          });
+          
+          if (userIsMember) {
+            console.log(`Found existing chat ${chat.id} with user ${userId}`);
+            return chat.id;
+          }
+        } catch (err) {
+          console.error(`Error checking chat ${chat.id} for user ${userId}:`, err);
+          // Continue to next chat
+        }
+      }
+      
+      // No existing chat found
+      console.log(`No existing chat found between club ${clubId} and user ${userId}`);
+      return null;
+    } catch (err) {
+      console.error('Error finding existing chat:', err);
+      return null;
+    }
+  }, []);
+
+  const createChat = useCallback(async (data: any): Promise<Chat> => {
+    // If there's a club_id and this is a direct chat with one member, 
+    // first check if a chat already exists
+    if (data.club_id && data.chat_type === 'direct' && 
+        Array.isArray(data.members) && data.members.length === 1) {
+      
+      const userId = data.members[0];
+      console.log(`Checking for existing chat before creating: club ${data.club_id}, user ${userId}`);
+      const existingChatId = await findExistingChat(data.club_id, userId);
+      
+      if (existingChatId) {
+        // If a chat already exists, fetch its details
+        try {
+          const response = await api.get<Chat>(`/api/chats/${existingChatId}/`);
+          const existingChat = response.data;
+          
+          // Return the existing chat instead of creating a new one
+          console.log('Found existing chat, returning instead of creating new:', existingChat);
+          return existingChat;
+        } catch (e) {
+          console.error('Error fetching existing chat:', e);
+          // Fall through to create a new chat if we can't fetch the existing one
+        }
+      }
+    }
+    
+    // No existing chat found or couldn't fetch it, create a new one
+    try {
+      console.log('Creating new chat with data:', data);
       const response = await api.post<Chat>('/api/chats/', data);
       // Update chats list with the new chat
       setChats(prevChats => [response.data, ...prevChats]);
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating chat:', error);
+      
+      // If there's a duplicate key error, it means the chat already exists
+      // This is a race condition - the chat might have been created between our check and create
+      if (error.response && 
+          (error.response.status === 400 || error.response.status === 409) && 
+          error.response.data && 
+          typeof error.response.data.error === 'string' && 
+          (error.response.data.error.includes('already exists') || 
+           error.response.data.error.includes('duplicate key'))) {
+        
+        console.log('Got duplicate key error, retrying to find existing chat');
+        
+        // Try again to find the existing chat
+        if (data.club_id && data.chat_type === 'direct' && 
+            Array.isArray(data.members) && data.members.length === 1) {
+          
+          const userId = data.members[0];
+          // Retry the search with a small delay to allow any in-progress operations to complete
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const retryExistingChatId = await findExistingChat(data.club_id, userId);
+          
+          if (retryExistingChatId) {
+            try {
+              const response = await api.get<Chat>(`/api/chats/${retryExistingChatId}/`);
+              console.log('Successfully found existing chat after duplicate key error:', response.data);
+              return response.data;
+            } catch (e) {
+              console.error('Error fetching existing chat after duplicate key error:', e);
+            }
+          }
+        }
+      }
+      
+      // If we couldn't handle the error or find an existing chat, rethrow
       throw error;
     }
-  }, []);
+  }, [findExistingChat]);
 
   const sendMessage = useCallback(async (chatId: number, content: string, image?: File): Promise<ChatMessage> => {
     if (!chatId || (!content.trim() && !image)) {
@@ -371,6 +496,7 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
     fetchChats,
     fetchChat,
     createChat,
+    findExistingChat,
     sendMessage,
     markChatAsRead,
     addMemberToChat,
@@ -387,6 +513,7 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
     fetchChats,
     fetchChat,
     createChat,
+    findExistingChat,
     sendMessage,
     markChatAsRead,
     addMemberToChat,

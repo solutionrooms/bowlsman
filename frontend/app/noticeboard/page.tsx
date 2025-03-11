@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Navigation from '../components/Navigation';
 import PageHeading from '../components/PageHeading';
 import pageDescriptions from '../utils/pageDescriptions';
+import { useMessaging } from '../messaging/context/MessagingContext';
 
 type Notice = {
   id: number;
@@ -48,6 +49,7 @@ export default function NoticeboardPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'social_bowl' | 'general' | 'for_sale'>('all');
   const [chatLoading, setChatLoading] = useState<{[key: number]: boolean}>({});
   const router = useRouter();
+  const { findExistingChat, createChat } = useMessaging();
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -152,18 +154,69 @@ export default function NoticeboardPage() {
   const handleStartChat = async (noticeId: number, creatorId: number) => {
     setChatLoading(prev => ({ ...prev, [noticeId]: true }));
     try {
-      // Create a direct chat with the notice creator
-      const response = await api.post('/chats/', {
-        chat_type: 'direct',
-        club: currentClub?.id,
-        members: [creatorId]
-      });
+      if (!currentClub) {
+        setError('No club selected. Please select a club first.');
+        setChatLoading(prev => ({ ...prev, [noticeId]: false }));
+        return;
+      }
       
-      // Redirect to the chat page
-      router.push(`/messages/${response.data.id}`);
+      console.log(`Starting chat with creator ID ${creatorId} from notice ${noticeId}`);
+      
+      try {
+        // Attempt to find an existing chat with this user
+        const existingChatId = await findExistingChat(currentClub.id, creatorId);
+        
+        if (existingChatId) {
+          // Navigate to the existing chat
+          console.log('Using existing chat:', existingChatId);
+          router.push(`/messaging?chat=${existingChatId}`);
+          setChatLoading(prev => ({ ...prev, [noticeId]: false }));
+          return;
+        }
+        
+        // Create a direct chat with the notice creator
+        const chatData = {
+          chat_type: 'direct',
+          club_id: currentClub.id,
+          members: [creatorId]
+        };
+        
+        console.log('Creating new chat with data:', chatData);
+        const newChat = await createChat(chatData);
+        console.log('Chat created or found:', newChat);
+        
+        // Redirect to the chat page
+        router.push(`/messaging?chat=${newChat.id}`);
+      } catch (error: any) {
+        console.error('Error handling chat:', error);
+        
+        // If we get an error that suggests a duplicate chat, try to find the existing one again
+        if (error.response && error.response.data && 
+            typeof error.response.data.error === 'string' &&
+            (error.response.data.error.includes('already exists') || 
+             error.response.data.error.includes('duplicate key'))) {
+          
+          console.log('Got duplicate key error, retrying to find existing chat');
+          
+          // Wait a moment and try again
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const retryExistingChatId = await findExistingChat(currentClub.id, creatorId);
+          
+          if (retryExistingChatId) {
+            console.log('Found existing chat after error:', retryExistingChatId);
+            router.push(`/messaging?chat=${retryExistingChatId}`);
+            setChatLoading(prev => ({ ...prev, [noticeId]: false }));
+            return;
+          }
+        }
+        
+        // If we reach here, we couldn't recover from the error
+        setError('Failed to start chat. Please try again.');
+      }
     } catch (err) {
       console.error('Error creating chat:', err);
       setError('Failed to start chat. Please try again.');
+    } finally {
       setChatLoading(prev => ({ ...prev, [noticeId]: false }));
     }
   };
@@ -334,6 +387,7 @@ export default function NoticeboardPage() {
           <PageHeading 
             title="Noticeboard" 
             infoText={pageDescriptions.noticeboard}
+            helpHref="/help/content/noticeboard"
           />
           <Link 
             href="/noticeboard/create" 

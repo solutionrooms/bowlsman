@@ -223,6 +223,19 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
                 key={member.id} 
                 className="bg-white px-3 py-1 rounded-full text-sm border border-gray-200 flex items-center"
               >
+                {member.user_details.avatar ? (
+                  <img 
+                    src={getFullImageUrl(member.user_details.avatar) || ''} 
+                    alt={member.user_details.full_name}
+                    className="w-6 h-6 rounded-full object-cover mr-2" 
+                  />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center mr-2">
+                    <span className="text-xs font-medium text-gray-600">
+                      {member.user_details.full_name.substring(0, 1).toUpperCase()}
+                    </span>
+                  </div>
+                )}
                 <span>{member.user_details.full_name}</span>
                 {member.is_admin && (
                   <span className="ml-1 text-xs bg-blue-100 text-blue-800 px-1 rounded">Admin</span>
@@ -251,6 +264,23 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
                   key={message.id} 
                   className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                 >
+                  {!isCurrentUser && (
+                    <div className="mr-2 flex-shrink-0">
+                      {message.sender_details.avatar ? (
+                        <img 
+                          src={getFullImageUrl(message.sender_details.avatar) || ''}
+                          alt={message.sender_details.full_name}
+                          className="w-8 h-8 rounded-full object-cover" 
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
+                          <span className="text-sm font-medium text-gray-600">
+                            {message.sender_details.full_name.substring(0, 1).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div 
                     className={`max-w-[75%] rounded-lg px-4 py-2 ${
                       isCurrentUser 
@@ -259,9 +289,17 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
                     }`}
                   >
                     <div className="flex justify-between items-baseline mb-1">
-                      <span className={`font-medium text-sm ${isCurrentUser ? 'text-blue-100' : 'text-gray-900'}`}>
-                        {message.sender_details.full_name}
-                      </span>
+                      <div className="flex items-center">
+                        <span className={`font-medium text-sm ${isCurrentUser ? 'text-blue-100' : 'text-gray-900'}`}>
+                          {message.sender_details.full_name}
+                        </span>
+                        {message.sender_details.is_admin && (
+                          <span className="ml-1 text-xs bg-blue-100 text-blue-800 px-1 rounded">Admin</span>
+                        )}
+                        {message.sender_details.club_role && (
+                          <span className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">{message.sender_details.club_role}</span>
+                        )}
+                      </div>
                       <span className={`text-xs ml-2 ${isCurrentUser ? 'text-blue-200' : 'text-gray-500'}`}>
                         {formatTime(message.created_at)}
                       </span>

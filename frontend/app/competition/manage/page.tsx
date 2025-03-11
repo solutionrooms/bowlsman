@@ -557,6 +557,7 @@ export default function ManageCompetitions() {
               <PageHeading 
                 title="Manage Competitions" 
                 infoText={pageDescriptions.competitions}
+                helpHref="/help/content/competitions"
               />
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto">
                 {userClubs.length > 1 && (

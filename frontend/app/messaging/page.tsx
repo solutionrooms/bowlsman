@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../src/lib/axios';
 import Navigation from '../components/Navigation';
+import PageHeading from '../components/PageHeading';
+import pageDescriptions from '../utils/pageDescriptions';
 import { useMessaging } from './context/MessagingContext';
 import ChatList from './components/ChatList';
 import ChatDetail from './components/ChatDetail';
@@ -69,6 +71,15 @@ export default function MessagingPage() {
     };
   }, []); // Empty dependency array means this effect runs only once on mount
 
+  // Check for chat ID in URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const chatId = params.get('chat');
+    if (chatId) {
+      setSelectedChatId(parseInt(chatId, 10));
+    }
+  }, []);
+
   // Memoize the data fetching function to prevent it from being recreated on every render
   const fetchData = useCallback(async (clubId: number) => {
     if (!clubId) return;
@@ -118,7 +129,10 @@ export default function MessagingPage() {
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <div className="border-b border-gray-200 p-4 flex justify-between items-center">
-              <h1 className="text-2xl font-semibold text-gray-900">Chat</h1>
+              <PageHeading 
+                title="Chat" 
+                helpHref="/help/content/messaging"
+              />
               <button
                 onClick={() => setShowCreateModal(true)}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center"

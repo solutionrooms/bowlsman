@@ -231,7 +231,7 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
         data.competition = selectedCompetition;
       }
 
-      // Create the chat
+      // Create the chat (or find existing one - createChat function already handles this logic)
       const newChat = await createChat(data);
       onChatCreated(newChat.id);
       onClose();
