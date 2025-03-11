@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api from '../../../src/lib/axios';
-import Navigation from '../../components/Navigation';
-import PageHeading from '../../components/PageHeading';
-import pageDescriptions from '../../utils/pageDescriptions';
+import api from '../../../../src/lib/axios';
+import Navigation from '../../../components/Navigation';
+import PageHeading from '../../../components/PageHeading';
+import pageDescriptions from '../../../utils/pageDescriptions';
 
 type Club = {
   id: number;
@@ -20,8 +20,30 @@ type User = {
   is_staff: boolean;
 };
 
-export default function CreateNoticePage() {
+type Notice = {
+  id: number;
+  title: string;
+  description: string;
+  notice_type: 'social_bowl' | 'general' | 'for_sale';
+  date?: string;
+  time?: string;
+  location?: string;
+  price?: number;
+  image?: string;
+  pdf_file?: string;
+  club: number;
+  created_by: {
+    id: number;
+    username: string;
+  };
+  created_at: string;
+  updated_at: string;
+  additional_images?: { id: number; image: string }[];
+};
+
+export default function EditNoticePage({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const id = params.id;
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [noticeType, setNoticeType] = useState<'social_bowl' | 'general' | 'for_sale'>('general');
@@ -31,9 +53,14 @@ export default function CreateNoticePage() {
   const [price, setPrice] = useState('');
   const [images, setImages] = useState<File[]>([]);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [additionalImageUrls, setAdditionalImageUrls] = useState<{id: number, image: string}[]>([]);
+  const [currentPdfUrl, setCurrentPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentClub, setCurrentClub] = useState<Club | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
@@ -79,22 +106,79 @@ export default function CreateNoticePage() {
     };
   }, []);
 
+  useEffect(() => {
+    const fetchNotice = async () => {
+      if (!id) return;
+      
+      setInitialLoading(true);
+      try {
+        const response = await api.get<Notice>(`/notices/${id}/`);
+        setNotice(response.data);
+        
+        // Populate form fields with current notice data
+        setTitle(response.data.title);
+        setDescription(response.data.description);
+        setNoticeType(response.data.notice_type);
+        
+        // Format date string correctly if it exists
+        if (response.data.date) {
+          setDate(response.data.date);
+        }
+        
+        if (response.data.time) {
+          setTime(response.data.time);
+        }
+        
+        if (response.data.location) {
+          setLocation(response.data.location);
+        }
+        
+        if (response.data.price) {
+          setPrice(response.data.price.toString());
+        }
+        
+        if (response.data.image) {
+          setCurrentImageUrl(response.data.image);
+        }
+        
+        if (response.data.pdf_file) {
+          setCurrentPdfUrl(response.data.pdf_file);
+        }
+        
+        // Set additional images if they exist
+        if (response.data.additional_images && response.data.additional_images.length > 0) {
+          setAdditionalImageUrls(response.data.additional_images);
+        }
+        
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching notice:', err);
+        setError('Failed to load notice. It may have been removed or you do not have permission to view it.');
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    fetchNotice();
+  }, [id]);
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      // Convert FileList to array and add to existing images
-      const newFiles = Array.from(e.target.files);
-      setImages(prev => [...prev, ...newFiles]);
+      const fileArray = Array.from(e.target.files);
+      setImages(prev => [...prev, ...fileArray]);
     }
   };
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setPdfFile(e.target.files[0]);
+      setCurrentPdfUrl(null); // Clear the current PDF URL if a new file is selected
     }
   };
 
   const clearImage = () => {
     setImages([]);
+    setCurrentImageUrl(null);
     if (imageInputRef.current) {
       imageInputRef.current.value = '';
     }
@@ -110,6 +194,7 @@ export default function CreateNoticePage() {
 
   const clearPdf = () => {
     setPdfFile(null);
+    setCurrentPdfUrl(null);
     if (pdfInputRef.current) {
       pdfInputRef.current.value = '';
     }
@@ -123,6 +208,12 @@ export default function CreateNoticePage() {
     try {
       if (!currentClub) {
         setError('Please select a club first');
+        setLoading(false);
+        return;
+      }
+
+      if (!notice) {
+        setError('Notice not found');
         setLoading(false);
         return;
       }
@@ -189,7 +280,7 @@ export default function CreateNoticePage() {
       // Add multiple images if selected
       if (images.length > 0) {
         // If we have multiple images, add them with indexed names
-        if (images.length === 1) {
+        if (images.length === 1 && !additionalImageUrls.length) {
           formData.append('image', images[0]);
         } else {
           images.forEach((img, index) => {
@@ -198,10 +289,24 @@ export default function CreateNoticePage() {
           // Add a flag to indicate multiple images
           formData.append('has_multiple_images', 'true');
         }
+      } else if (currentImageUrl === null && additionalImageUrls.length === 0) {
+        // If currentImageUrl is null and no new image is selected, it means the user wants to remove the image
+        formData.append('remove_image', 'true');
+      }
+      
+      // If we're keeping existing additional images
+      if (additionalImageUrls.length > 0) {
+        formData.append('keep_additional_images', 'true');
+        additionalImageUrls.forEach((img, index) => {
+          formData.append(`additional_image_id_${index}`, img.id.toString());
+        });
       }
       
       if (pdfFile) {
         formData.append('pdf_file', pdfFile);
+      } else if (currentPdfUrl === null) {
+        // If currentPdfUrl is null and no new PDF is selected, it means the user wants to remove the PDF
+        formData.append('remove_pdf', 'true');
       }
 
       type NoticeResponse = {
@@ -210,7 +315,8 @@ export default function CreateNoticePage() {
         notice_type: string;
       };
 
-      const response = await api.post<NoticeResponse>('/notices/', formData, {
+      // Use PATCH to update only the changed fields
+      const response = await api.patch<NoticeResponse>(`/notices/${id}/`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -219,12 +325,28 @@ export default function CreateNoticePage() {
       // Redirect to the notice detail page
       router.push(`/noticeboard/${response.data.id}`);
     } catch (err) {
-      console.error('Error creating notice:', err);
-      setError('Failed to create notice. Please try again.');
+      console.error('Error updating notice:', err);
+      setError('Failed to update notice. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <Navigation onLogout={handleLogout} />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-center">
+            <svg className="animate-spin h-10 w-10 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentClub) {
     return (
@@ -250,6 +372,38 @@ export default function CreateNoticePage() {
     );
   }
 
+  if (!notice) {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <Navigation onLogout={handleLogout} />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">
+                  Notice not found or you don't have permission to edit it.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4">
+            <Link
+              href="/noticeboard"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Back to Noticeboard
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       <Navigation onLogout={handleLogout} />
@@ -257,16 +411,16 @@ export default function CreateNoticePage() {
         <div className="md:flex md:items-center md:justify-between mb-6">
           <div className="flex-1 min-w-0">
             <PageHeading 
-              title="Create Notice" 
-              infoText={pageDescriptions.createNotice}
+              title="Edit Notice" 
+              infoText="Edit your notice details here. Make your changes and click 'Update Notice' to save them."
             />
           </div>
           <div className="mt-4 flex md:mt-0 md:ml-4">
             <Link
-              href="/noticeboard"
+              href={`/noticeboard/${id}`}
               className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
-              Back to Noticeboard
+              Back to Notice
             </Link>
           </div>
         </div>
@@ -403,55 +557,133 @@ export default function CreateNoticePage() {
                   </div>
                 )}
 
-                {/* Image upload */}
-                <div className="mt-4">
-                  <label htmlFor="image" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer">
-                    <svg className="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span>Upload images</span>
+                {/* Image Upload */}
+                <div>
+                  <label htmlFor="image" className="block text-sm font-medium text-gray-700">
+                    Images (Optional)
                   </label>
-                  <input
-                    type="file"
-                    id="image"
-                    accept="image/*"
-                    multiple
-                    className="sr-only"
-                    ref={imageInputRef}
-                    onChange={handleImageChange}
-                  />
-                  
-                  {images.length > 0 && (
-                    <div className="mt-3">
-                      <div className="flex items-center mb-2">
-                        <h4 className="text-sm font-medium text-gray-700">Uploaded Images:</h4>
-                        <button
-                          type="button"
-                          className="ml-4 text-sm text-red-600 hover:text-red-900"
-                          onClick={clearImage}
-                        >
-                          Clear all
-                        </button>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {images.map((img, index) => (
-                          <div key={index} className="flex items-center p-2 border rounded">
-                            <span className="text-sm text-gray-500 truncate mr-auto">{img.name}</span>
-                            <button
-                              type="button"
-                              className="ml-2 text-red-600 hover:text-red-900"
-                              onClick={() => removeImage(index)}
-                            >
-                              <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                              </svg>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                  {currentImageUrl && (
+                    <div className="mt-2 mb-4">
+                      <p className="text-sm text-gray-500 mb-2">Current image:</p>
+                      <img 
+                        src={currentImageUrl} 
+                        alt="Current notice image" 
+                        className="max-w-xs h-auto rounded-md shadow-sm"
+                      />
                     </div>
                   )}
+                  <div className="mt-1 flex items-center">
+                    <label htmlFor="image" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer">
+                      <svg className="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>Upload images</span>
+                    </label>
+                    <input
+                      type="file"
+                      id="image"
+                      accept="image/*"
+                      multiple
+                      className="sr-only"
+                      ref={imageInputRef}
+                      onChange={handleImageChange}
+                    />
+                  </div>
+                  <div className="mt-3">
+                    {/* Display existing main image if there is one */}
+                    {currentImageUrl && (
+                      <div className="mb-4">
+                        <div className="flex items-center mb-2">
+                          <h4 className="text-sm font-medium text-gray-700">Current Main Image:</h4>
+                          <button
+                            type="button"
+                            className="ml-4 text-sm text-red-600 hover:text-red-900"
+                            onClick={() => setCurrentImageUrl(null)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="w-40 h-40 relative">
+                          <img 
+                            src={currentImageUrl} 
+                            alt="Current notice" 
+                            className="w-full h-full object-cover rounded border"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Display existing additional images */}
+                    {additionalImageUrls.length > 0 && (
+                      <div className="mb-4">
+                        <div className="flex items-center mb-2">
+                          <h4 className="text-sm font-medium text-gray-700">Additional Images:</h4>
+                          <button
+                            type="button"
+                            className="ml-4 text-sm text-red-600 hover:text-red-900"
+                            onClick={() => setAdditionalImageUrls([])}
+                          >
+                            Remove All
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                          {additionalImageUrls.map((img, index) => (
+                            <div key={img.id} className="w-full relative">
+                              <img 
+                                src={img.image} 
+                                alt={`Additional image ${index + 1}`} 
+                                className="w-full h-32 object-cover rounded border"
+                              />
+                              <button
+                                type="button"
+                                className="absolute top-1 right-1 bg-white rounded-full p-1 shadow text-red-600 hover:text-red-900"
+                                onClick={() => {
+                                  setAdditionalImageUrls(prev => prev.filter(i => i.id !== img.id));
+                                }}
+                              >
+                                <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Display newly uploaded images */}
+                    {images.length > 0 && (
+                      <div className="mt-3">
+                        <div className="flex items-center mb-2">
+                          <h4 className="text-sm font-medium text-gray-700">New Uploads:</h4>
+                          <button
+                            type="button"
+                            className="ml-4 text-sm text-red-600 hover:text-red-900"
+                            onClick={clearImage}
+                          >
+                            Clear all
+                          </button>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {images.map((img, index) => (
+                            <div key={index} className="flex items-center p-2 border rounded">
+                              <span className="text-sm text-gray-500 truncate mr-auto">{img.name}</span>
+                              <button
+                                type="button"
+                                className="ml-2 text-red-600 hover:text-red-900"
+                                onClick={() => removeImage(index)}
+                              >
+                                <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* PDF Upload */}
@@ -459,6 +691,22 @@ export default function CreateNoticePage() {
                   <label htmlFor="pdf-file" className="block text-sm font-medium text-gray-700">
                     PDF Attachment (Optional)
                   </label>
+                  {currentPdfUrl && (
+                    <div className="mt-2 mb-2">
+                      <p className="text-sm text-gray-500 mb-1">Current PDF:</p>
+                      <a 
+                        href={currentPdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 underline inline-flex items-center"
+                      >
+                        <svg className="h-5 w-5 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L13 11.586V8z" clipRule="evenodd" />
+                        </svg>
+                        View current PDF
+                      </a>
+                    </div>
+                  )}
                   <div className="mt-1 flex items-center">
                     <input
                       ref={pdfInputRef}
@@ -473,21 +721,19 @@ export default function CreateNoticePage() {
                       htmlFor="pdf-file"
                       className="relative cursor-pointer bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500"
                     >
-                      <span>Upload a PDF</span>
+                      <span>{currentPdfUrl ? 'Replace PDF' : 'Upload a PDF'}</span>
                     </label>
-                    {pdfFile && (
-                      <div className="ml-4 flex items-center">
-                        <span className="text-sm text-gray-500">{pdfFile.name}</span>
-                        <button
-                          type="button"
-                          className="ml-2 text-red-600 hover:text-red-900"
-                          onClick={clearPdf}
-                        >
-                          <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      </div>
+                    {(pdfFile || currentPdfUrl) && (
+                      <button
+                        type="button"
+                        className="ml-4 text-red-600 hover:text-red-900"
+                        onClick={clearPdf}
+                      >
+                        <span className="mr-2">Remove PDF</span>
+                        <svg className="inline-block h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                        </svg>
+                      </button>
                     )}
                   </div>
                   <p className="mt-1 text-sm text-gray-500">
@@ -497,7 +743,7 @@ export default function CreateNoticePage() {
 
                 <div className="flex justify-end">
                   <Link
-                    href="/noticeboard"
+                    href={`/noticeboard/${id}`}
                     className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 mr-3"
                   >
                     Cancel
@@ -515,10 +761,10 @@ export default function CreateNoticePage() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        Creating...
+                        Updating...
                       </>
                     ) : (
-                      'Create Notice'
+                      'Update Notice'
                     )}
                   </button>
                 </div>

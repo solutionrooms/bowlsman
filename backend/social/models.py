@@ -35,6 +35,22 @@ class SocialBowl(models.Model):
         return f"{self.title} - {self.get_notice_type_display()}"
 
 
+class NoticeImage(models.Model):
+    """Additional images for notices"""
+    notice = models.ForeignKey(SocialBowl, on_delete=models.CASCADE, related_name='additional_images')
+    image = models.ImageField(upload_to='notices/images/additional/')
+    order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'created_at']
+        verbose_name = 'Notice Image'
+        verbose_name_plural = 'Notice Images'
+
+    def __str__(self):
+        return f"Image for {self.notice.title} (#{self.order})"
+
+
 class SocialBowlParticipant(models.Model):
     """Users who have joined a social bowling session."""
     social_bowl = models.ForeignKey(SocialBowl, on_delete=models.CASCADE, related_name='participants')

@@ -3,9 +3,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
 from django.utils import timezone
-from .models import SocialBowl, SocialBowlParticipant
+from .models import SocialBowl, SocialBowlParticipant, NoticeImage
 from .serializers import SocialBowlSerializer, SocialBowlParticipantSerializer
 from users.models import ClubUser
+import json
 
 
 class IsClubMemberOrReadOnly(permissions.BasePermission):
@@ -78,6 +79,88 @@ class SocialBowlViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(participants__user=self.request.user)
         
         return queryset
+
+    def create(self, request, *args, **kwargs):
+        """Handle creating a notice with multiple images"""
+        has_multiple_images = False
+        additional_images = []
+        
+        # Check if multiple images are being uploaded
+        for key in request.data.keys():
+            if key.startswith('image_') and key != 'image':
+                has_multiple_images = True
+                additional_images.append((key, request.data[key]))
+        
+        if has_multiple_images:
+            # Create a mutable copy of the request data
+            mutable_data = request.data.copy()
+            
+            # Create the notice first without additional images
+            serializer = self.get_serializer(data=mutable_data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            
+            # Add additional images
+            notice = serializer.instance
+            for i, (_, image) in enumerate(additional_images):
+                NoticeImage.objects.create(
+                    notice=notice,
+                    image=image,
+                    order=i+1
+                )
+            
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        else:
+            # Standard create behavior
+            return super().create(request, *args, **kwargs)
+    
+    def update(self, request, *args, **kwargs):
+        """Handle updating a notice with multiple images"""
+        has_multiple_images = False
+        additional_images = []
+        
+        # Check if multiple images are being uploaded
+        for key in request.data.keys():
+            if key.startswith('image_') and key != 'image':
+                has_multiple_images = True
+                additional_images.append((key, request.data[key]))
+        
+        # Get the notice instance
+        instance = self.get_object()
+        
+        if 'remove_image' in request.data and request.data['remove_image'] == 'true':
+            instance.image = None
+        
+        if 'remove_pdf' in request.data and request.data['remove_pdf'] == 'true':
+            instance.pdf_file = None
+        
+        if has_multiple_images:
+            # Create a mutable copy of the request data
+            mutable_data = request.data.copy()
+            
+            # Update the notice first without additional images
+            serializer = self.get_serializer(instance, data=mutable_data, partial=kwargs.get('partial', False))
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            
+            # If has_multiple_images flag is set to true, clear existing additional images
+            if 'has_multiple_images' in request.data and request.data['has_multiple_images'] == 'true':
+                # Remove existing additional images if we're uploading new ones
+                instance.additional_images.all().delete()
+                
+                # Add new additional images
+                for i, (_, image) in enumerate(additional_images):
+                    NoticeImage.objects.create(
+                        notice=instance,
+                        image=image,
+                        order=i+1
+                    )
+            
+            return Response(serializer.data)
+        else:
+            # Standard update behavior
+            return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def join(self, request, pk=None):

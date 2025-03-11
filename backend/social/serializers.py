@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import SocialBowl, SocialBowlParticipant
+from .models import SocialBowl, SocialBowlParticipant, NoticeImage
 from users.serializers import UserSerializer
 
 User = get_user_model()
@@ -19,18 +19,25 @@ class SocialBowlParticipantSerializer(serializers.ModelSerializer):
         read_only_fields = ['joined_at']
 
 
+class NoticeImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NoticeImage
+        fields = ['id', 'image', 'order']
+
+
 class SocialBowlSerializer(serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)
     participant_count = serializers.SerializerMethodField()
     is_participant = serializers.SerializerMethodField()
     participants = SocialBowlParticipantSerializer(many=True, read_only=True)
+    additional_images = NoticeImageSerializer(many=True, read_only=True)
     
     class Meta:
         model = SocialBowl
         fields = [
             'id', 'title', 'description', 'notice_type', 'date', 'time', 
             'location', 'price', 'image', 'pdf_file', 'club', 'created_by', 'created_at', 
-            'updated_at', 'participant_count', 'is_participant', 'participants'
+            'updated_at', 'participant_count', 'is_participant', 'participants', 'additional_images'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by']
     

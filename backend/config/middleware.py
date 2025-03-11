@@ -20,10 +20,17 @@ class RequestLoggingMiddleware:
         
         # Log request body for POST/PUT/PATCH requests
         if method in ['POST', 'PUT', 'PATCH'] and request.body:
-            try:
-                body = json.loads(request.body)
-                logger.info(f"API Request: {method} {path} - Body: {json.dumps(body)}")
-            except json.JSONDecodeError:
+            # Check if the content type is multipart/form-data or not JSON
+            content_type = request.META.get('CONTENT_TYPE', '')
+            if 'multipart/form-data' in content_type:
+                logger.info(f"API Request: {method} {path} - Body: (multipart form data)")
+            elif 'application/json' in content_type:
+                try:
+                    body = json.loads(request.body)
+                    logger.info(f"API Request: {method} {path} - Body: {json.dumps(body)}")
+                except json.JSONDecodeError:
+                    logger.info(f"API Request: {method} {path} - Body: (invalid JSON data)")
+            else:
                 logger.info(f"API Request: {method} {path} - Body: (non-JSON data)")
         else:
             logger.info(f"API Request: {method} {path}")
@@ -42,7 +49,9 @@ class RequestLoggingMiddleware:
         # Try to log response content for API calls
         if path.startswith('/api/'):
             try:
-                if isinstance(response, HttpResponse) and response.content:
+                # Check if the content is JSON before trying to parse it
+                content_type = response.get('Content-Type', '')
+                if 'application/json' in content_type and isinstance(response, HttpResponse) and response.content:
                     try:
                         if '/competitions' in path:
                             # For competition endpoints, log full response data
@@ -57,9 +66,24 @@ class RequestLoggingMiddleware:
                                 logger.info(f"API Response: {method} {path} - {status_code} - {duration:.2f}s - Data type: {type(content).__name__}")
                     except json.JSONDecodeError:
                         logger.info(f"API Response: {method} {path} - {status_code} - {duration:.2f}s - (non-JSON response)")
+                else:
+                    logger.info(f"API Response: {method} {path} - {status_code} - {duration:.2f}s - (non-JSON content)")
             except Exception as e:
                 logger.info(f"API Response: {method} {path} - {status_code} - {duration:.2f}s - Error logging content: {str(e)}")
         else:
             logger.info(f"Response: {method} {path} - {status_code} - {duration:.2f}s")
         
+        return response
+
+
+class LogBodyMiddleware:
+    """
+    Middleware to log request and response bodies for debugging
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        # Process the request
+        response = self.get_response(request)
         return response

@@ -35,6 +35,11 @@ type Notice = {
   };
   created_at: string;
   updated_at: string;
+  additional_images?: {
+    id: number;
+    image: string;
+    order: number;
+  }[];
 };
 
 type Club = {
@@ -373,16 +378,35 @@ export default function NoticeDetailPage({ params }: { params: { id: string } })
             </div>
 
             {/* Display uploaded image if available */}
-            {notice.image && (
+            {(notice.image || (notice.additional_images && notice.additional_images.length > 0)) && (
               <div className="mt-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-3">Attached Image</h3>
-                <div className="mt-2 flex justify-center">
-                  <img 
-                    src={notice.image} 
-                    alt="Notice attachment" 
-                    className="max-w-full h-auto rounded-lg shadow-md max-h-96 object-contain"
-                  />
-                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-3">
+                  {notice.additional_images && notice.additional_images.length > 0 
+                    ? 'Attached Images' 
+                    : 'Attached Image'}
+                </h3>
+                {notice.image && (
+                  <div className="mt-2 flex justify-center mb-4">
+                    <img 
+                      src={notice.image} 
+                      alt="Primary notice attachment" 
+                      className="max-w-full h-auto rounded-lg shadow-md max-h-96 object-contain"
+                    />
+                  </div>
+                )}
+                {notice.additional_images && notice.additional_images.length > 0 && (
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {notice.additional_images.map((img) => (
+                      <div key={img.id} className="flex justify-center">
+                        <img 
+                          src={img.image} 
+                          alt={`Additional image #${img.order}`} 
+                          className="max-w-full h-auto rounded-lg shadow-md max-h-64 object-contain"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

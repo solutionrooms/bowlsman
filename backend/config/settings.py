@@ -160,4 +160,8 @@ LOGGING = {
             'propagate': False,
         },
     },
-} 
+}
+
+# Maximum upload file size: 15MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15MB 
