@@ -95,11 +95,17 @@ class ChatMemberSerializer(serializers.ModelSerializer):
 
 class ChatMessageSerializer(serializers.ModelSerializer):
     sender_details = UserSerializer(source='sender', read_only=True)
+    image_url = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = ChatMessage
-        fields = ['id', 'chat', 'sender', 'sender_details', 'content', 'created_at', 'updated_at']
-        read_only_fields = ['sender_details']
+        fields = ['id', 'chat', 'sender', 'sender_details', 'content', 'image', 'image_url', 'created_at', 'updated_at']
+        read_only_fields = ['sender_details', 'image_url']
+    
+    def get_image_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
 
 class ChatDetailSerializer(ChatSerializer):
     members = ChatMemberSerializer(source='members.all', many=True, read_only=True)

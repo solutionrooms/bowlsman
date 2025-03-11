@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '../components/Navigation';
 import api from '../../src/lib/axios';
+import { getApiUrl } from '../../src/lib/axios';
 
 interface ClubUser {
   id: number;
@@ -45,6 +46,24 @@ export default function Profile() {
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const router = useRouter();
+  
+  // Get the backend API URL for media files
+  const apiUrl = getApiUrl();
+  
+  // Generate the full image URL using the backend API URL
+  const getFullImageUrl = useCallback((imagePath: string | null) => {
+    if (!imagePath) return null;
+    // Handle both relative and absolute URLs
+    if (imagePath.startsWith('http')) {
+      return imagePath;
+    }
+    // Remove leading slash if present
+    const cleanPath = imagePath.startsWith('/') ? imagePath.substring(1) : imagePath;
+    
+    // Use the API URL but remove the '/api' part for media files
+    const baseUrl = apiUrl.replace(/\/api\/?$/, '');
+    return `${baseUrl}/${cleanPath}`;
+  }, [apiUrl]);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -250,9 +269,9 @@ export default function Profile() {
                 <div className="flex items-center space-x-4">
                   <div className="relative">
                     <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-200">
-                      {previewUrl || user.profile_picture ? (
+                      {previewUrl || (user?.profile_picture && getFullImageUrl(user.profile_picture) ? (
                         <img
-                          src={previewUrl || user.profile_picture}
+                          src={previewUrl || getFullImageUrl(user.profile_picture) || ''}
                           alt="Profile"
                           className="w-full h-full object-cover"
                         />
@@ -262,7 +281,7 @@ export default function Profile() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                           </svg>
                         </div>
-                      )}
+                      ))}
                     </div>
                     {isEditing && (
                       <>

@@ -54,6 +54,8 @@ interface ChatMessage {
     full_name: string;
   };
   content: string;
+  image: string | null;
+  image_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -91,7 +93,7 @@ interface MessagingContextType {
   fetchChats: (clubId: number) => Promise<void>;
   fetchChat: (chatId: number) => Promise<void>;
   createChat: (data: any) => Promise<Chat>;
-  sendMessage: (chatId: number, content: string) => Promise<ChatMessage>;
+  sendMessage: (chatId: number, content: string, image?: File) => Promise<ChatMessage>;
   markChatAsRead: (chatId: number) => Promise<void>;
   addMemberToChat: (chatId: number, userId: number) => Promise<void>;
   removeMemberFromChat: (chatId: number, userId: number) => Promise<void>;
@@ -216,13 +218,16 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, []);
 
-  const sendMessage = useCallback(async (chatId: number, content: string): Promise<ChatMessage> => {
-    if (!chatId || !content.trim()) {
-      throw new Error('Chat ID and content are required');
+  const sendMessage = useCallback(async (chatId: number, content: string, image?: File): Promise<ChatMessage> => {
+    if (!chatId || (!content.trim() && !image)) {
+      throw new Error('Chat ID and either content or image are required');
     }
     
     try {
       console.log(`Sending message to chat ${chatId}: ${content}`);
+      if (image) {
+        console.log("Uploading image:", image);
+      }
       
       // Get the current club ID from localStorage
       let clubId = null;
@@ -238,10 +243,37 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
       }
       
+      // Create FormData if we have an image
+      let data;
+      let config: any = {};
+      
+      if (image) {
+        data = new FormData();
+        // Ensure content is not empty - use a space if blank
+        data.append('content', content.trim() ? content : ' ');
+        data.append('image', image);
+        if (clubId) {
+          data.append('club_id', clubId.toString());
+        }
+        
+        // DO NOT set Content-Type for FormData - browser will set it with boundary
+        config = {
+          headers: {
+            'Content-Type': undefined // Let browser set the correct Content-Type with boundary
+          }
+        };
+      } else {
+        data = { content, club_id: clubId };
+        config = {
+          headers: { 'Content-Type': 'application/json' }
+        };
+      }
+      
       // The correct URL format for nested resources in DRF
       const response = await api.post<ChatMessage>(
         `/api/chats/${chatId}/messages/`, 
-        { content, club_id: clubId }
+        data,
+        config
       );
       
       // Update active chat with the new message
@@ -262,27 +294,6 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
           // Continue anyway - the message was sent successfully
         }
       }
-      
-      // Update the chat in the list to show the latest message
-      setChats(prevChats =>
-        prevChats.map(chat => {
-          if (chat.id === chatId) {
-            return {
-              ...chat,
-              last_message: {
-                id: response.data.id,
-                content: response.data.content.length > 50 
-                  ? response.data.content.substring(0, 50) + '...' 
-                  : response.data.content,
-                sender: response.data.sender_details.username,
-                created_at: response.data.created_at
-              },
-              updated_at: new Date().toISOString()
-            };
-          }
-          return chat;
-        })
-      );
       
       return response.data;
     } catch (error) {

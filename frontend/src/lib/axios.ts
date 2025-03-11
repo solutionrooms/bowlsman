@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // Function to get the API URL
-const getApiUrl = () => {
+export const getApiUrl = () => {
   // Try to get from window.__NEXT_DATA__
   if (typeof window !== 'undefined' && (window as any).__NEXT_DATA__?.runtimeConfig?.NEXT_PUBLIC_API_URL) {
     const nextDataUrl = (window as any).__NEXT_DATA__.runtimeConfig.NEXT_PUBLIC_API_URL;
@@ -40,6 +40,13 @@ instance.interceptors.request.use((config) => {
   // Ensure config.baseURL is set
   if (!config.baseURL) {
     config.baseURL = apiUrl;
+  }
+  
+  // If data is FormData, remove Content-Type header to let browser set it with boundary
+  if (config.data instanceof FormData) {
+    if (config.headers) {
+      delete config.headers['Content-Type'];
+    }
   }
   
   if (config.url) {

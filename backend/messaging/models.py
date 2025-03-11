@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import User
 from users.models import Club, Competition
+from django.core.validators import FileExtensionValidator
+from users.models import validate_image_size
 
 class Chat(models.Model):
     CHAT_TYPES = [
@@ -82,6 +84,15 @@ class ChatMessage(models.Model):
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_chat_messages')
     content = models.TextField()
+    image = models.ImageField(
+        upload_to='chat_images/',
+        null=True,
+        blank=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'gif']),
+            validate_image_size
+        ]
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

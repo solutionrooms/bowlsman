@@ -562,6 +562,7 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
         return ChatMessage.objects.filter(chat_id=chat_id).order_by('created_at')
     
     def create(self, request, *args, **kwargs):
+        """Handle creating a chat message, potentially with an image"""
         chat_id = self.kwargs.get('chat_pk')
         if not chat_id:
             return Response(
@@ -594,11 +595,23 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Create the message
-        data = request.data.copy()
+        # Create a mutable copy of the request data
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        
+        # Handle image upload - log for debugging
+        image = request.FILES.get('image') if hasattr(request, 'FILES') else None
+        if image:
+            print(f"Image received: {image.name}, size: {image.size}, content type: {image.content_type}")
+        
+        # Ensure content is not empty if there's an image
+        if image and (not data.get('content') or data.get('content').isspace()):
+            data['content'] = ' '  # Set non-empty space if content is empty
+        
+        # Set required fields
         data['chat'] = chat_id
         data['sender'] = request.user.id
         
+        # Validate and save
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         message = serializer.save()

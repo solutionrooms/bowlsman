@@ -391,41 +391,85 @@ class UserViewSet(viewsets.ModelViewSet):
         user.save()
         return Response({'status': 'password reset'})
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get', 'put'])
     def me(self, request):
-        if request.user.is_authenticated:
-            serializer = UserSerializer(request.user)
+        if not request.user.is_authenticated:
+            return Response({'error': 'Not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
             
-            # Get the user's current or last club
-            current_club = None
-            club_users = ClubUser.objects.filter(user=request.user).order_by('-last_login_at')
-            
-            if club_users.exists():
-                # Get the first club user (most recently logged in)
-                club_user = club_users.first()
+        # Handle PUT request for updating user profile
+        if request.method == 'PUT':
+            try:
+                user = request.user
                 
-                # Create current_club with is_admin field included
-                current_club = ClubSerializer(club_user.club).data
-                current_club['is_admin'] = club_user.is_admin
+                # Update basic user fields
+                if 'first_name' in request.data:
+                    user.first_name = request.data.get('first_name')
+                if 'last_name' in request.data:
+                    user.last_name = request.data.get('last_name')
+                if 'email' in request.data:
+                    user.email = request.data.get('email')
                 
-                # Set current club in session if not already set
-                if 'current_club_id' not in request.session:
-                    request.session['current_club_id'] = club_user.club.id
+                user.save()
                 
-            # Get all clubs the user is a member of with is_admin field
-            clubs = []
-            for cu in club_users:
-                club_data = ClubSerializer(cu.club).data
-                club_data['is_admin'] = cu.is_admin
-                clubs.append(club_data)
+                # Get or create user profile
+                profile, created = UserProfile.objects.get_or_create(user=user)
                 
-            return Response({
-                'user': serializer.data,
-                'current_club': current_club,
-                'clubs': clubs
-            })
-        return Response({'error': 'Not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+                # Update profile fields
+                if 'phone_number' in request.data:
+                    profile.phone_number = request.data.get('phone_number')
+                if 'notes' in request.data:
+                    profile.notes = request.data.get('notes')
+                if 'postcode' in request.data:
+                    profile.postcode = request.data.get('postcode')
+                
+                # Handle profile picture
+                if 'profile_picture' in request.FILES:
+                    profile.profile_picture = request.FILES.get('profile_picture')
+                
+                profile.save()
+                
+                # Return updated user data
+                serializer = UserSerializer(user)
+                return Response(serializer.data)
+                
+            except ValidationError as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.error(f"Error updating user profile: {str(e)}")
+                return Response({'error': 'Failed to update profile'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
+        # Handle GET request
+        serializer = UserSerializer(request.user)
+        
+        # Get the user's current or last club
+        current_club = None
+        club_users = ClubUser.objects.filter(user=request.user).order_by('-last_login_at')
+        
+        if club_users.exists():
+            # Get the first club user (most recently logged in)
+            club_user = club_users.first()
+            
+            # Create current_club with is_admin field included
+            current_club = ClubSerializer(club_user.club).data
+            current_club['is_admin'] = club_user.is_admin
+            
+            # Set current club in session if not already set
+            if 'current_club_id' not in request.session:
+                request.session['current_club_id'] = club_user.club.id
+            
+        # Get all clubs the user is a member of with is_admin field
+        clubs = []
+        for cu in club_users:
+            club_data = ClubSerializer(cu.club).data
+            club_data['is_admin'] = cu.is_admin
+            clubs.append(club_data)
+            
+        return Response({
+            'user': serializer.data,
+            'current_club': current_club,
+            'clubs': clubs
+        })
+
     @action(detail=False, methods=['get'])
     def clubs(self, request):
         """Get all clubs that the user is a member of"""

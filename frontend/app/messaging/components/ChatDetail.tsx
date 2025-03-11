@@ -3,21 +3,30 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useMessaging } from '../context/MessagingContext';
 import { formatDistanceToNow } from 'date-fns';
+import Image from 'next/image';
+import { getApiUrl } from '../../../src/lib/axios';
 
 interface ChatDetailProps {
   chatId: number | null;
 }
 
 const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
-  const { activeChat, fetchChat, sendMessage, markChatAsRead } = useMessaging();
+  const { activeChat, fetchChat, sendMessage, markChatAsRead, chats } = useMessaging();
   const [messageContent, setMessageContent] = useState('');
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [showMembers, setShowMembers] = useState(false);
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
   
   // Keep track of previous chatId to avoid unnecessary fetches
   const prevChatIdRef = useRef<number | null>(null);
+
+  // Get the backend API URL for media files
+  const apiUrl = getApiUrl();
 
   // Fetch chat data when chatId changes
   useEffect(() => {
@@ -53,17 +62,72 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeChat?.messages?.length]); // Only depend on the length of messages
 
+  // Handle image selection
+  const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      setSelectedImage(file);
+      
+      // Create a preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }, []);
+
+  // Clear selected image
+  const clearSelectedImage = useCallback(() => {
+    setSelectedImage(null);
+    setPreviewUrl(null);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
+  }, []);
+
+  // Trigger image input click
+  const handleImageButtonClick = useCallback(() => {
+    imageInputRef.current?.click();
+  }, []);
+
+  // Generate the full image URL using the backend API URL
+  const getFullImageUrl = useCallback((imagePath: string | null) => {
+    if (!imagePath) return null;
+    // Handle both relative and absolute URLs
+    if (imagePath.startsWith('http')) {
+      return imagePath;
+    }
+    // Remove leading slash if present
+    const cleanPath = imagePath.startsWith('/') ? imagePath.substring(1) : imagePath;
+    
+    // Use the API URL but remove the '/api' part for media files
+    const baseUrl = apiUrl.replace(/\/api\/?$/, '');
+    return `${baseUrl}/${cleanPath}`;
+  }, [apiUrl]);
+
+  // Handle image click to expand
+  const handleImageClick = useCallback((imageUrl: string) => {
+    setExpandedImage(imageUrl);
+  }, []);
+
+  // Close expanded image
+  const closeExpandedImage = useCallback(() => {
+    setExpandedImage(null);
+  }, []);
+
   // Memoize the send message handler
   const handleSendMessage = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatId || !messageContent.trim()) return;
+    if (!chatId || (!messageContent.trim() && !selectedImage)) return;
 
     // Show some feedback that we're sending
-    console.log('Sending message:', messageContent);
+    console.log('Sending message:', messageContent, selectedImage);
     
-    sendMessage(chatId, messageContent)
+    sendMessage(chatId, messageContent, selectedImage || undefined)
       .then(() => {
         setMessageContent('');
+        clearSelectedImage();
         // Scroll to bottom after sending
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -73,7 +137,7 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
         console.error('Error sending message:', error);
         setError('Failed to send message. Please try again.');
       });
-  }, [chatId, messageContent, sendMessage]);
+  }, [chatId, messageContent, sendMessage, selectedImage, clearSelectedImage]);
 
   // Handle input change
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -179,6 +243,8 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
           <div className="space-y-4">
             {activeChat.messages.map((message) => {
               const isCurrentUser = message.sender_details.id === activeChat.created_by;
+              // Get full image URL if image_url exists
+              const fullImageUrl = getFullImageUrl(message.image_url);
               
               return (
                 <div 
@@ -200,9 +266,22 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
                         {formatTime(message.created_at)}
                       </span>
                     </div>
-                    <p className={`${isCurrentUser ? 'text-white' : 'text-gray-800'}`}>
-                      {message.content}
-                    </p>
+                    {message.content && (
+                      <p className={`${isCurrentUser ? 'text-white' : 'text-gray-800'}`}>
+                        {message.content}
+                      </p>
+                    )}
+                    {fullImageUrl && (
+                      <div className="mt-2">
+                        <img 
+                          src={fullImageUrl} 
+                          alt="Message attachment" 
+                          className="max-w-full h-auto rounded cursor-pointer"
+                          style={{ maxHeight: '200px' }}
+                          onClick={() => handleImageClick(fullImageUrl)}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -214,7 +293,44 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
 
       {/* Message input */}
       <div className="bg-white border-t border-gray-200 p-4">
-        <form onSubmit={handleSendMessage} className="flex">
+        {/* Preview of selected image */}
+        {previewUrl && (
+          <div className="mb-3 relative">
+            <img 
+              src={previewUrl} 
+              alt="Selected image" 
+              className="max-h-32 max-w-full rounded"
+            />
+            <button
+              type="button"
+              onClick={clearSelectedImage}
+              className="absolute top-1 right-1 bg-gray-800 bg-opacity-70 text-white rounded-full p-1"
+              aria-label="Remove image"
+            >
+              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        )}
+        <form onSubmit={handleSendMessage} className="flex items-center">
+          <button
+            type="button"
+            onClick={handleImageButtonClick}
+            className="mr-2 p-2 text-gray-500 hover:text-blue-600 focus:outline-none"
+            aria-label="Attach image"
+          >
+            <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </button>
+          <input
+            type="file"
+            ref={imageInputRef}
+            onChange={handleImageChange}
+            accept="image/*"
+            className="hidden"
+          />
           <input
             type="text"
             value={messageContent}
@@ -224,13 +340,37 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
           />
           <button
             type="submit"
-            disabled={!messageContent.trim()}
+            disabled={!messageContent.trim() && !selectedImage}
             className="bg-blue-600 text-white px-4 py-2 rounded-r-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300"
           >
             Send
           </button>
         </form>
       </div>
+
+      {/* Image Modal for expanded view */}
+      {expandedImage && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
+          onClick={closeExpandedImage}
+        >
+          <div className="max-w-4xl max-h-full" onClick={e => e.stopPropagation()}>
+            <img 
+              src={expandedImage} 
+              alt="Expanded image" 
+              className="max-w-full max-h-[90vh] object-contain rounded"
+            />
+            <button
+              className="absolute top-4 right-4 bg-gray-800 bg-opacity-70 text-white rounded-full p-2"
+              onClick={closeExpandedImage}
+            >
+              <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
