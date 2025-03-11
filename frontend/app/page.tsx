@@ -4,6 +4,7 @@ import React, { useState, FormEvent, ChangeEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '../src/lib/axios';
 import { validatePassword, getPasswordRules } from '../src/lib/passwordValidation';
+import Link from 'next/link';
 
 interface ApiError {
   error: string;
@@ -43,6 +44,7 @@ export default function Home() {
   const [showClubSelection, setShowClubSelection] = useState(false);
   const [clubs, setClubs] = useState<Club[]>([]);
   const [selectedClubId, setSelectedClubId] = useState<number | null>(null);
+  const [privacyPolicyAccepted, setPrivacyPolicyAccepted] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -135,6 +137,12 @@ export default function Home() {
           return;
         }
 
+        // Check if privacy policy is accepted
+        if (!privacyPolicyAccepted) {
+          setMessage('You must accept the privacy policy to register.');
+          return;
+        }
+
         // Proceed with registration
         const response = await api.post<LoginResponse | ApiError>('/users/register/', {
           username,
@@ -173,7 +181,7 @@ export default function Home() {
       );
       
       // Find the selected club in the clubs list
-      const selectedClub = clubs.find(club => club.id === selectedClubId);
+      const selectedClub = clubs.find((club: Club) => club.id === selectedClubId);
       if (selectedClub) {
         localStorage.setItem('currentClub', JSON.stringify(selectedClub));
         router.push('/home');
@@ -199,7 +207,7 @@ export default function Home() {
           <h1 className="text-2xl font-bold mb-6 text-center">Select Your Club</h1>
           {message && <p className="mb-4 text-red-500">{message}</p>}
           <div className="space-y-4">
-            {clubs.map(club => (
+            {clubs.map((club: Club) => (
               <button
                 key={club.id}
                 onClick={() => {
@@ -233,7 +241,7 @@ export default function Home() {
               type="text"
               id="username"
               value={username}
-              onChange={(e) => handleInputChange(e, setUsername)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => handleInputChange(e, setUsername)}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               required
             />
@@ -248,7 +256,7 @@ export default function Home() {
                   type="email"
                   id="email"
                   value={email}
-                  onChange={(e) => handleInputChange(e, setEmail)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => handleInputChange(e, setEmail)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   required={!isLogin}
                 />
@@ -261,7 +269,7 @@ export default function Home() {
                   type="text"
                   id="firstName"
                   value={firstName}
-                  onChange={(e) => handleInputChange(e, setFirstName)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => handleInputChange(e, setFirstName)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -273,7 +281,7 @@ export default function Home() {
                   type="text"
                   id="lastName"
                   value={lastName}
-                  onChange={(e) => handleInputChange(e, setLastName)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => handleInputChange(e, setLastName)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -285,9 +293,31 @@ export default function Home() {
                   type="text"
                   id="postcode"
                   value={postcode}
-                  onChange={(e) => handleInputChange(e, setPostcode)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => handleInputChange(e, setPostcode)}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
+              </div>
+              
+              {/* Privacy Policy Checkbox */}
+              <div className="flex items-start">
+                <div className="flex items-center h-5">
+                  <input
+                    id="privacy-policy"
+                    name="privacy-policy"
+                    type="checkbox"
+                    checked={privacyPolicyAccepted}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setPrivacyPolicyAccepted(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                </div>
+                <div className="ml-3 text-sm">
+                  <label htmlFor="privacy-policy" className="font-medium text-gray-700">
+                    I confirm that I have read and agree with the{' '}
+                    <Link href="/privacy-policy" target="_blank" className="text-blue-600 hover:underline">
+                      privacy terms
+                    </Link>
+                  </label>
+                </div>
               </div>
             </>
           )}
@@ -299,7 +329,7 @@ export default function Home() {
               type="password"
               id="password"
               value={password}
-              onChange={(e) => handleInputChange(e, setPassword)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => handleInputChange(e, setPassword)}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               required
             />

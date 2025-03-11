@@ -1302,7 +1302,8 @@ class ClubApplicationViewSet(viewsets.ModelViewSet):
         
         # Users can see their own applications
         return ClubApplication.objects.filter(
-            models.Q(user=user)) | models.Q(club_id__in=admin_clubs)
+            models.Q(user=user) | models.Q(club_id__in=admin_clubs)
+        )
     
     def perform_create(self, serializer):
         serializer.save(user=self.request.user, status='pending')
