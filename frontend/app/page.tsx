@@ -3,6 +3,7 @@
 import React, { useState, FormEvent, ChangeEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '../src/lib/axios';
+import { validatePassword, getPasswordRules } from '../src/lib/passwordValidation';
 
 interface ApiError {
   error: string;
@@ -127,7 +128,14 @@ export default function Home() {
           setMessage(response.data.error || 'Login failed. Please try again.');
         }
       } else {
-        // Register
+        // Register - validate password first
+        const validation = validatePassword(password);
+        if (!validation.isValid) {
+          setMessage(validation.message);
+          return;
+        }
+
+        // Proceed with registration
         const response = await api.post<LoginResponse | ApiError>('/users/register/', {
           username,
           password,
@@ -295,6 +303,11 @@ export default function Home() {
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               required
             />
+            {!isLogin && (
+              <p className="mt-1 text-sm text-gray-500">
+                {getPasswordRules()}
+              </p>
+            )}
           </div>
           <button
             type="submit"

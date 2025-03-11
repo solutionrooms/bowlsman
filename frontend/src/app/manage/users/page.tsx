@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { message } from 'antd';
 import type { ChangeEvent } from 'react';
 import api from '../../../lib/axios';
+import { validatePassword, getPasswordRules } from '../../../lib/passwordValidation';
 
 interface User {
   id: number;
@@ -107,6 +108,13 @@ export default function ManageUsers() {
 
   const handlePasswordReset = async () => {
     if (!selectedUserId || !newPassword) return;
+
+    // Validate password
+    const validation = validatePassword(newPassword);
+    if (!validation.isValid) {
+      message.error(validation.message);
+      return;
+    }
 
     try {
       await api.post(`/users/${selectedUserId}/reset_password/`, { password: newPassword });
@@ -325,6 +333,9 @@ export default function ManageUsers() {
                         onChange={(e) => setNewPassword(e.target.value)}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                       />
+                      <p className="mt-1 text-sm text-gray-500">
+                        {getPasswordRules()}
+                      </p>
                     </div>
                   </div>
                   <div className="mt-5 sm:mt-6 flex justify-end space-x-3">

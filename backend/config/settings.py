@@ -87,13 +87,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Email Configuration
 # Use SMTP for testing
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+EMAIL_HOST = os.environ.get('SMTP_HOST', 'smtp.mailersend.net')
+EMAIL_PORT = int(os.environ.get('SMTP_PORT', 587))
+EMAIL_USE_TLS = os.environ.get('SMTP_SSL', 'false').lower() != 'true'
+EMAIL_HOST_USER = os.environ.get('SMTP_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('SMTP_PASS', '')
 EMAIL_TIMEOUT = 30  # Timeout in seconds
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@bowlshub.example.com')
+DEFAULT_FROM_EMAIL = os.environ.get('SMTP_SENDER', 'noreply@bowlshub.example.com')
 
 # Uncomment to use console backend instead
 # EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

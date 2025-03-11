@@ -3,6 +3,7 @@
 import React, { useState, FormEvent, ChangeEvent } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import api from '../../../src/lib/axios';
+import { validatePassword, getPasswordRules } from '../../../src/lib/passwordValidation';
 
 export default function ResetPasswordConfirm() {
   const [password, setPassword] = useState('');
@@ -23,8 +24,10 @@ export default function ResetPasswordConfirm() {
       return;
     }
 
-    if (password.length < 8) {
-      setMessage('Password must be at least 8 characters long');
+    // Validate password using our utility function
+    const validation = validatePassword(password);
+    if (!validation.isValid) {
+      setMessage(validation.message);
       return;
     }
 
@@ -72,8 +75,10 @@ export default function ResetPasswordConfirm() {
                 onChange={(e) => handleInputChange(e, setPassword)}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 required
-                minLength={8}
               />
+              <p className="mt-1 text-sm text-gray-500">
+                {getPasswordRules()}
+              </p>
             </div>
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
@@ -86,7 +91,6 @@ export default function ResetPasswordConfirm() {
                 onChange={(e) => handleInputChange(e, setConfirmPassword)}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 required
-                minLength={8}
               />
             </div>
             <button

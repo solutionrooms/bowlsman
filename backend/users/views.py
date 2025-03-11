@@ -21,6 +21,7 @@ from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.conf import settings
 from django.urls import reverse
+from .utils import validate_password
 
 logger = logging.getLogger(__name__)
 
@@ -378,6 +379,14 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Validate password
+        is_valid, message = validate_password(new_password)
+        if not is_valid:
+            return Response(
+                {'error': message}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         user.set_password(new_password)
         user.save()
         return Response({'status': 'password reset'})
@@ -531,6 +540,14 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Validate password
+        is_valid, message = validate_password(password)
+        if not is_valid:
+            return Response(
+                {'error': message}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         # Create user
         user = User.objects.create_user(
             username=username,
@@ -606,7 +623,7 @@ class UserViewSet(viewsets.ModelViewSet):
         # Create a password reset token
         token = PasswordResetToken.objects.create(user=user)
         
-        # Build the reset URL
+        # Build the reset URL - use the path parameter format to match the frontend route
         frontend_url = settings.FRONTEND_URL
         reset_url = f"{frontend_url}/reset-password/{token.token}"
         
@@ -615,8 +632,6 @@ class UserViewSet(viewsets.ModelViewSet):
         
         # Send email with reset link
         try:
-            reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token.token}"
-            
             subject = 'Password Reset for BowlsHub'
             message = f"""
             Hello {user.first_name or user.username},
@@ -660,6 +675,14 @@ class UserViewSet(viewsets.ModelViewSet):
         if not token_str or not new_password:
             return Response(
                 {'error': 'Token and password are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate password
+        is_valid, message = validate_password(new_password)
+        if not is_valid:
+            return Response(
+                {'error': message}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -1279,8 +1302,7 @@ class ClubApplicationViewSet(viewsets.ModelViewSet):
         
         # Users can see their own applications
         return ClubApplication.objects.filter(
-            models.Q(user=user) | models.Q(club_id__in=admin_clubs)
-        )
+            models.Q(user=user)) | models.Q(club_id__in=admin_clubs)
     
     def perform_create(self, serializer):
         serializer.save(user=self.request.user, status='pending')
