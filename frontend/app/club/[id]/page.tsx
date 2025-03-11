@@ -203,8 +203,10 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('All users fetched:', usersResponse.data);
         
         // Filter out users who are already members
-        const memberUserIds = new Set(mappedMembers.map(m => m.user));
-        const availableUsers = usersResponse.data.filter(user => !memberUserIds.has(user.id));
+        const memberUserIds = new Set(mappedMembers.map((m: ClubMember) => 
+          typeof m.user === 'number' ? m.user : (m.user as any).id
+        ));
+        const availableUsers = usersResponse.data.filter((user: User) => !memberUserIds.has(user.id));
         
         console.log('Available users:', availableUsers);
         setAllUsers(availableUsers);
@@ -228,16 +230,16 @@ export default function ClubDetail({ params }: ClubDetailProps) {
     }
 
     // Get IDs of users already in the club
-    const existingUserIds = new Set(members.map((m: ClubMember) => m.user));
-    console.log('Existing user IDs for dropdown filter:', Array.from(existingUserIds));
-    console.log('All available users:', allUsers);
+    const existingUserIds = new Set(members.map((m: ClubMember) => 
+      typeof m.user === 'number' ? m.user : (m.user as any).id
+    ));
     
     // Filter users by name and exclude those already in the club
     const searchTermLower = newPlayerName.toLowerCase();
     const filtered = allUsers.filter((u: User) => {
       // Check if user is not already a member
       const isMember = existingUserIds.has(u.id);
-      console.log('Checking user:', u.username, 'isMember:', isMember);
+      
       if (isMember) {
         return false;
       }
@@ -245,12 +247,9 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       // Search by display name, username, first name, or last name
       const searchString = `${u.display_name || ''} ${u.username || ''} ${u.first_name || ''} ${u.last_name || ''}`.toLowerCase();
       const matches = searchString.includes(searchTermLower);
-      console.log('User search string:', searchString, 'matches:', matches);
       return matches;
     });
     
-    console.log('Filtered users for dropdown:', filtered.length);
-    console.log('Filtered user details:', filtered);
     setFilteredUsers(filtered);
     setShowUserDropdown(true);
   }, [newPlayerName, allUsers, members]);
@@ -279,13 +278,12 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return;
       }
 
+      // Fetch updated club members
       const response = await api.get<ClubMember[]>(
         `/club-users/?club=${clubId}`,
         { headers: { Authorization: `Token ${token}` } }
       );
 
-      console.log('Refreshed club members (raw):', response.data);
-      
       // Map the response to match our expected format if needed
       const mappedMembers = response.data.map(member => {
         // Check if user_details is missing and create it from available data
@@ -297,13 +295,11 @@ export default function ClubDetail({ params }: ClubDetailProps) {
           const displayName = firstName || lastName 
             ? `${firstName} ${lastName}`.trim() 
             : username;
-            
-          console.log('Creating user_details for member:', member.user, 'displayName:', displayName);
           
           return {
             ...member,
             user_details: {
-              id: member.user,
+              id: typeof member.user === 'number' ? member.user : member.user.id,
               username: username,
               display_name: displayName
             }
@@ -345,11 +341,23 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return aName.localeCompare(bName);
       });
       
-      console.log('Refreshed club members (mapped and sorted):', sortedMembers);
       setMembers(sortedMembers);
-    } catch (error: any) {
-      console.error('Error fetching members:', error);
-      setError('Failed to load club members. Please try again.');
+      
+      // Also refresh the list of available users (non-members)
+      const usersResponse = await api.get<User[]>('/users/', {
+        headers: { Authorization: `Token ${token}` },
+        params: { club_id: clubId, show_non_members: 'true' }
+      });
+      
+      // Filter out users who are already members
+      const memberUserIds = new Set(mappedMembers.map((m: ClubMember) => 
+        typeof m.user === 'number' ? m.user : (m.user as any).id
+      ));
+      const availableUsers = usersResponse.data.filter((user: User) => !memberUserIds.has(user.id));
+      
+      setAllUsers(availableUsers);
+    } catch (error) {
+      console.error('Error refreshing members:', error);
     }
   };
 
