@@ -7,6 +7,7 @@ import Navigation from '../components/Navigation';
 import PageHeading from '../components/PageHeading';
 import pageDescriptions from '../utils/pageDescriptions';
 import Link from 'next/link';
+import { canManageTeam } from '../../src/utils/permissions';
 
 interface League {
   id: number;
@@ -55,6 +56,8 @@ export default function LeaguesPage() {
   const [userClubs, setUserClubs] = useState<Club[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  const [userId, setUserId] = useState<number | null>(null);
+  const [manageableTeams, setManageableTeams] = useState<Set<number>>(new Set());
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -76,6 +79,7 @@ export default function LeaguesPage() {
         
         setUserClubs(clubs);
         setCurrentClub(current_club);
+        setUserId(userData.user.id);
         
         // Check if user is admin of current club
         if (current_club) {
@@ -119,6 +123,21 @@ export default function LeaguesPage() {
     
     fetchData();
   }, [router]);
+
+  // Determine which teams the user can manage
+  useEffect(() => {
+    if (userId && leagues.length > 0 && userClubs.length > 0) {
+      const manageable = new Set<number>();
+      
+      leagues.forEach(league => {
+        if (canManageTeam(userId, league, userClubs)) {
+          manageable.add(league.id);
+        }
+      });
+      
+      setManageableTeams(manageable);
+    }
+  }, [userId, leagues, userClubs]);
 
   const handleClubChange = async (clubId: number) => {
     try {
@@ -165,7 +184,7 @@ export default function LeaguesPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-6">
           <PageHeading 
-            title="Leagues" 
+            title="Teams" 
             infoText={pageDescriptions.leagues}
           />
           <div className="flex space-x-2">
@@ -182,7 +201,7 @@ export default function LeaguesPage() {
                 href="/leagues/create"
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
-                Create League
+                Create Team
               </Link>
             )}
           </div>
@@ -203,130 +222,96 @@ export default function LeaguesPage() {
           </div>
         )}
         
-        {/* Club selection */}
-        {userClubs.length > 0 && (
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
-            <div className="px-4 py-5 sm:p-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Select Club</h2>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {userClubs.map(club => (
-                  <button
-                    key={club.id}
-                    onClick={() => handleClubChange(club.id)}
-                    className={`relative block w-full p-4 border rounded-lg shadow-sm ${
-                      currentClub?.id === club.id
-                        ? 'border-blue-500 ring-2 ring-blue-500 bg-blue-50'
-                        : 'border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    <span className="block text-sm font-medium text-gray-900">{club.name}</span>
-                    {club.is_admin && (
-                      <span className="mt-1 block text-xs text-blue-600">(Admin)</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Leagues list */}
+        {/* Teams list */}
         {currentClub && (
           <div className="bg-white shadow overflow-hidden sm:rounded-lg">
             <div className="px-4 py-5 sm:p-6">
               <h2 className="text-lg font-medium text-gray-900 mb-4">
                 {leagues.length > 0
-                  ? `Leagues in ${currentClub.name}`
-                  : 'No Leagues Found'}
+                  ? `Teams in ${currentClub.name}`
+                  : 'No Teams Found'}
               </h2>
               
-              {/* Admin status diagnostic */}
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <h3 className="text-md font-medium text-gray-900 mb-2">Admin Status</h3>
-                <p className="text-sm text-gray-600">
-                  Current club: {currentClub.name} (ID: {currentClub.id})
-                </p>
-                <p className="text-sm text-gray-600">
-                  Admin status from frontend: {isAdmin ? 'Yes' : 'No'}
-                </p>
-                <p className="text-sm text-gray-600 mt-2">
-                  If you're having trouble creating leagues, please contact support and mention this information.
-                </p>
-                <div className="mt-3">
-                  <button
-                    onClick={async () => {
-                      try {
-                        const response = await api.get(`club-admin-status?club_id=${currentClub.id}`);
-                        alert(`Backend admin status: ${JSON.stringify(response.data, null, 2)}`);
-                      } catch (err) {
-                        alert(`Error checking admin status: ${err}`);
-                      }
-                    }}
-                    className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200"
-                  >
-                    Check Backend Admin Status
-                  </button>
-                </div>
-              </div>
-              
               {leagues.length > 0 ? (
-                <div className="space-y-4">
-                  {leagues.map(league => (
-                    <div
-                      key={league.id}
-                      className="block w-full text-left px-6 py-4 border border-gray-300 rounded-lg hover:bg-gray-50"
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h3 className="text-lg font-medium text-gray-900">
-                            <Link href={`/leagues/${league.id}`} className="hover:text-blue-600">
-                              {league.name}
-                            </Link>
-                          </h3>
-                          <p className="mt-1 text-sm text-gray-500">
-                            Season: {league.season}
-                          </p>
-                          <p className="mt-1 text-sm text-gray-500">
-                            Members: {league.members_count}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-500">
-                            Captain: {league.captain ? `${league.captain.first_name} ${league.captain.last_name}` : 'None'}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            Deputy: {league.deputy ? `${league.deputy.first_name} ${league.deputy.last_name}` : 'None'}
-                          </p>
-                          <Link
-                            href={`/leagues/${league.id}`}
-                            className="mt-2 inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200"
-                          >
-                            View Details
-                          </Link>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="mt-4 overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+                  <table className="min-w-full divide-y divide-gray-300">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">Name</th>
+                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Season</th>
+                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Captain</th>
+                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Members</th>
+                        <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                          <span className="sr-only">Actions</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {leagues.map((league) => (
+                        <tr key={league.id}>
+                          <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">{league.name}</td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{league.season}</td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                            {league.captain ? `${league.captain.first_name} ${league.captain.last_name}` : 'None'}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{league.members_count}</td>
+                          <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                            <div className="flex justify-end space-x-2">
+                              <Link
+                                href={`/leagues/${league.id}`}
+                                className="text-blue-600 hover:text-blue-900"
+                              >
+                                View<span className="sr-only">, {league.name}</span>
+                              </Link>
+                              
+                              {manageableTeams.has(league.id) && (
+                                <>
+                                  <span className="text-gray-300 mx-1">|</span>
+                                  <Link
+                                    href={`/leagues/${league.id}/edit`}
+                                    className="text-green-600 hover:text-green-900"
+                                  >
+                                    Edit<span className="sr-only">, {league.name}</span>
+                                  </Link>
+                                  <span className="text-gray-300 mx-1">|</span>
+                                  <Link
+                                    href={`/leagues/${league.id}/members/manage`}
+                                    className="text-indigo-600 hover:text-indigo-900"
+                                  >
+                                    Manage<span className="sr-only">, {league.name}</span>
+                                  </Link>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div className="text-center py-8">
                   <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No leagues found</h3>
-                  {isAdmin ? (
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">No teams found</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {isAdmin 
+                      ? "Get started by creating a new team."
+                      : "There are no teams in this club yet."}
+                  </p>
+                  {isAdmin && (
                     <div className="mt-6">
                       <Link
                         href="/leagues/create"
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                       >
-                        Create a League
+                        <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                          <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                        </svg>
+                        Create Team
                       </Link>
                     </div>
-                  ) : (
-                    <p className="mt-1 text-sm text-gray-500">
-                      No leagues have been created for this club yet.
-                    </p>
                   )}
                 </div>
               )}

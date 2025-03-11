@@ -659,3 +659,43 @@ def get_unread_count(request):
     
     # Return the total unread count
     return Response({"unread_count": old_unread_count + new_unread_count})
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def search_users(request):
+    """
+    Search for users in the same club as the requesting user.
+    Used for finding users when creating a chat.
+    """
+    query = request.query_params.get('q', '').strip()
+    club_id = request.query_params.get('club_id') or request.session.get('current_club_id')
+    
+    if not query or not club_id:
+        return Response([], status=status.HTTP_200_OK)
+    
+    # Clean club_id
+    try:
+        club_id = int(club_id.rstrip('/') if isinstance(club_id, str) else club_id)
+    except (ValueError, TypeError):
+        return Response({"error": "Invalid club ID format"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if user is a member of the club
+    if not ClubUser.objects.filter(user=request.user, club_id=club_id).exists():
+        return Response({"error": "You are not a member of this club"}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Find users in the same club that match the query
+    club_users = ClubUser.objects.filter(club_id=club_id).values_list('user_id', flat=True)
+    
+    users = User.objects.filter(
+        id__in=club_users
+    ).filter(
+        Q(username__icontains=query) | 
+        Q(first_name__icontains=query) | 
+        Q(last_name__icontains=query) |
+        Q(email__icontains=query)
+    ).exclude(
+        id=request.user.id  # Exclude the requesting user
+    )[:10]  # Limit to 10 results
+    
+    serializer = UserSerializer(users, many=True)
+    return Response(serializer.data)

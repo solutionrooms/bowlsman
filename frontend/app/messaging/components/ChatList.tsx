@@ -21,6 +21,7 @@ interface ChatItem {
   updated_at: string;
   member_count: number;
   unread_count: number;
+  display_name: string;
   last_message: {
     id: number;
     content: string;
@@ -31,27 +32,6 @@ interface ChatItem {
 
 const ChatList: React.FC<ChatListProps> = ({ onSelectChat, selectedChatId }) => {
   const { chats } = useMessaging();
-
-  const getChatName = useCallback((chat: ChatItem) => {
-    if (chat.name) return chat.name;
-    
-    // For direct chats without a name, use the other person's name
-    if (chat.chat_type === 'direct' && chat.member_count === 2) {
-      return `Chat with ${chat.last_message?.sender || 'User'}`;
-    }
-    
-    // For other chat types
-    switch (chat.chat_type) {
-      case 'team':
-        return 'Team Chat';
-      case 'competition':
-        return 'Competition Chat';
-      case 'group':
-        return `Group (${chat.member_count} members)`;
-      default:
-        return `Chat #${chat.id}`;
-    }
-  }, []);
 
   const getChatTypeIcon = useCallback((chatType: string) => {
     switch (chatType) {
@@ -116,7 +96,7 @@ const ChatList: React.FC<ChatListProps> = ({ onSelectChat, selectedChatId }) => 
               <div className="flex justify-between">
                 <div className="flex items-center">
                   <span className="text-xl mr-2">{getChatTypeIcon(chat.chat_type)}</span>
-                  <span className="text-sm font-medium text-gray-900">{getChatName(chat)}</span>
+                  <span className="text-sm font-medium text-gray-900">{chat.display_name}</span>
                 </div>
                 <span className="text-xs text-gray-500">
                   {chat.last_message ? formatTime(chat.last_message.created_at) : formatTime(chat.created_at)}

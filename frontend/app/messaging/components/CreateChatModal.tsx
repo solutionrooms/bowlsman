@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useMessaging } from '../context/MessagingContext';
 import api from '../../../src/lib/axios';
+import { debounce } from 'lodash';
 
 interface User {
   id: number;
@@ -50,13 +51,16 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
   const { createChat } = useMessaging();
   const [chatType, setChatType] = useState<'direct' | 'group' | 'team' | 'competition'>('direct');
   const [chatName, setChatName] = useState('');
-  const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
   const [selectedCompetition, setSelectedCompetition] = useState<number | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<User[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   // Fetch data only when the modal is opened
   useEffect(() => {
@@ -68,6 +72,8 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
     setSelectedUsers([]);
     setSelectedCompetition(null);
     setError('');
+    setSearchQuery('');
+    setSearchResults([]);
     
     // Fetch club members
     api.get<User[]>(`/api/club-members/${clubId}/`)
@@ -76,7 +82,6 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
         api.get(`/club-users/?club=${clubId}`)
           .then(clubUsersResponse => {
             const clubUsers = clubUsersResponse.data as any[];
-            console.log('Club users data:', clubUsers);
             
             // Enhance user data with club_role and is_admin
             const enhancedUsers = response.data.map(user => {
@@ -94,9 +99,6 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
                 return false;
               });
               
-              console.log(`User ${user.username}:`, user, 'Club user data:', clubUser);
-              console.log(`User ${user.username} is_admin:`, clubUser ? clubUser.is_admin : false);
-              
               return {
                 ...user,
                 club_role: clubUser ? clubUser.club_role : '',
@@ -104,7 +106,6 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
               };
             });
             
-            console.log('Enhanced users with roles and admin status:', enhancedUsers);
             setUsers(enhancedUsers);
           })
           .catch(error => {
@@ -136,6 +137,55 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
         console.error('Error checking admin status:', error);
       });
   }, [isOpen, clubId]);
+
+  // Debounced search function
+  const debouncedSearch = useRef(
+    debounce(async (query: string) => {
+      if (!query.trim() || query.length < 2) {
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
+
+      try {
+        const response = await api.get<User[]>(`/api/search-users/?q=${query}&club_id=${clubId}`);
+        // Filter out already selected users
+        const filteredResults = response.data.filter(
+          user => !selectedUsers.some(selectedUser => selectedUser.id === user.id)
+        );
+        setSearchResults(filteredResults);
+      } catch (error) {
+        console.error('Error searching users:', error);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300)
+  ).current;
+
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    
+    if (query.trim() && query.length >= 2) {
+      setIsSearching(true);
+      debouncedSearch(query);
+    } else {
+      setSearchResults([]);
+    }
+  };
+
+  // Handle selecting a user from search results
+  const handleSelectUser = (user: User) => {
+    setSelectedUsers(prev => [...prev, user]);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  // Handle removing a selected user
+  const handleRemoveUser = (userId: number) => {
+    setSelectedUsers(prev => prev.filter(user => user.id !== userId));
+  };
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,7 +223,7 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
 
       // Add members for direct and group chats
       if (chatType === 'direct' || chatType === 'group') {
-        data.members = selectedUsers;
+        data.members = selectedUsers.map(user => user.id);
       }
 
       // Add competition for competition chats
@@ -197,9 +247,17 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Create New Chat</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Create New Chat</h2>
+            <button 
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              ✕
+            </button>
+          </div>
           
           {error && (
             <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
@@ -248,104 +306,121 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
             
             {(chatType === 'group' || chatType === 'team') && (
               <div className="mb-4">
-                <label htmlFor="chatName" className="block text-gray-700 mb-2">Chat Name (optional)</label>
+                <label className="block text-gray-700 mb-2">
+                  Chat Name
+                </label>
                 <input
                   type="text"
-                  id="chatName"
+                  className="w-full p-2 border border-gray-300 rounded-md"
                   value={chatName}
                   onChange={(e) => setChatName(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-md"
-                  placeholder="Enter a name for this chat"
+                  placeholder={chatType === 'group' ? "Enter group name" : "Enter team chat name"}
                 />
-              </div>
-            )}
-            
-            {(chatType === 'direct' || chatType === 'group') && (
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2">
-                  {chatType === 'direct' ? 'Select User' : 'Select Users'}
-                </label>
-                <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-md">
-                  {users.length === 0 ? (
-                    <p className="p-3 text-gray-500">No users available</p>
-                  ) : (
-                    users.map(user => (
-                      <div 
-                        key={user.id} 
-                        className="p-2 hover:bg-gray-100 cursor-pointer flex items-center"
-                        onClick={() => {
-                          if (chatType === 'direct') {
-                            setSelectedUsers([user.id]);
-                          } else {
-                            setSelectedUsers(prev => 
-                              prev.includes(user.id) 
-                                ? prev.filter(id => id !== user.id) 
-                                : [...prev, user.id]
-                            );
-                          }
-                        }}
-                      >
-                        <input 
-                          type={chatType === 'direct' ? 'radio' : 'checkbox'}
-                          checked={selectedUsers.includes(user.id)}
-                          onChange={() => {}}
-                          className="mr-2"
-                        />
-                        <div className="flex flex-col w-full">
-                          <div className="flex items-center">
-                            <span className="font-medium">
-                              {user.full_name || 
-                               (user.first_name || user.last_name ? 
-                                `${user.first_name || ''} ${user.last_name || ''}`.trim() : 
-                                user.username)}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {user.is_admin && (
-                              <span className="inline-block text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded">Admin</span>
-                            )}
-                            {user.club_role && (
-                              <span className="inline-block text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">{user.club_role}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
               </div>
             )}
             
             {chatType === 'competition' && (
               <div className="mb-4">
-                <label className="block text-gray-700 mb-2">Select Competition</label>
+                <label className="block text-gray-700 mb-2">
+                  Select Competition
+                </label>
                 <select
+                  className="w-full p-2 border border-gray-300 rounded-md"
                   value={selectedCompetition || ''}
                   onChange={(e) => setSelectedCompetition(Number(e.target.value) || null)}
-                  className="w-full p-2 border border-gray-300 rounded-md"
                 >
                   <option value="">-- Select a competition --</option>
-                  {competitions.map(competition => (
+                  {competitions.map((competition) => (
                     <option key={competition.id} value={competition.id}>
-                      {competition.name} ({competition.status})
+                      {competition.name}
                     </option>
                   ))}
                 </select>
               </div>
             )}
             
-            <div className="flex justify-end space-x-2 mt-6">
+            {(chatType === 'direct' || chatType === 'group') && (
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">
+                  {chatType === 'direct' ? 'Select User' : 'Add Users'}
+                </label>
+                
+                {/* User search input */}
+                <div className="relative mb-2">
+                  <input
+                    type="text"
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                    value={searchQuery}
+                    onChange={handleSearchChange}
+                    placeholder="Search for users..."
+                  />
+                  {isSearching && (
+                    <div className="absolute right-3 top-2.5">
+                      <div className="animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+                    </div>
+                  )}
+                  
+                  {/* Search results dropdown */}
+                  {searchResults.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {searchResults.map(user => (
+                        <div
+                          key={user.id}
+                          className="p-2 hover:bg-gray-100 cursor-pointer"
+                          onClick={() => handleSelectUser(user)}
+                        >
+                          <div className="font-medium">{user.full_name || user.username}</div>
+                          <div className="text-xs text-gray-500">{user.email}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Selected users */}
+                <div className="mt-2">
+                  <div className="text-sm font-medium text-gray-700 mb-1">
+                    {selectedUsers.length > 0 
+                      ? `Selected ${chatType === 'direct' ? 'User' : 'Users'} (${selectedUsers.length})` 
+                      : `No ${chatType === 'direct' ? 'user' : 'users'} selected`}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedUsers.map(user => (
+                      <div 
+                        key={user.id}
+                        className="flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm"
+                      >
+                        <span>{user.full_name || user.username}</span>
+                        <button
+                          type="button"
+                          className="ml-1 text-blue-600 hover:text-blue-800"
+                          onClick={() => handleRemoveUser(user.id)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="flex justify-end mt-6">
               <button
                 type="button"
+                className="mr-2 px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
                 onClick={onClose}
-                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={loading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300"
+                className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-300"
+                disabled={loading || 
+                  (chatType === 'direct' && selectedUsers.length !== 1) ||
+                  (chatType === 'group' && selectedUsers.length === 0) ||
+                  (chatType === 'competition' && !selectedCompetition) ||
+                  (chatType === 'team' && !isAdmin)}
               >
                 {loading ? 'Creating...' : 'Create Chat'}
               </button>

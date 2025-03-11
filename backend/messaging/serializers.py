@@ -46,13 +46,14 @@ class ChatSerializer(serializers.ModelSerializer):
     member_count = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
     
     class Meta:
         model = Chat
         fields = ['id', 'name', 'chat_type', 'created_by', 'created_by_username', 
                   'club', 'competition', 'created_at', 'updated_at', 
-                  'member_count', 'unread_count', 'last_message']
-        read_only_fields = ['created_by_username', 'member_count', 'unread_count', 'last_message']
+                  'member_count', 'unread_count', 'last_message', 'display_name']
+        read_only_fields = ['created_by_username', 'member_count', 'unread_count', 'last_message', 'display_name']
     
     def get_member_count(self, obj):
         return obj.members.count()
@@ -77,6 +78,12 @@ class ChatSerializer(serializers.ModelSerializer):
                 'created_at': last_message.created_at
             }
         return None
+        
+    def get_display_name(self, obj):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            return obj.get_display_name(request.user)
+        return obj.get_display_name()
 
 class ChatMemberSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='user', read_only=True)

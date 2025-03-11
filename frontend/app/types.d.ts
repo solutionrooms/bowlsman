@@ -107,3 +107,34 @@ interface SocialBowl {
   participant_count: number;
   is_joined: boolean;
 }
+
+interface PlayerNameMapping {
+  id: number;
+  roster_first_name: string;
+  roster_last_name: string;
+  roster_full_name: string;
+  user: User;
+  created_at: string;
+}
+
+interface LeagueMember {
+  id: number;
+  user: User;
+  joined_at: string;
+}
+
+interface League {
+  id: number;
+  name: string;
+  club: Club;
+  season: string;
+  captain: User | null;
+  deputy: User | null;
+  league_table_link: string | null;
+  team_link: string | null;
+  created_at: string;
+  updated_at: string;
+  members_count: number;
+  members: LeagueMember[];
+  name_mappings: PlayerNameMapping[];
+}

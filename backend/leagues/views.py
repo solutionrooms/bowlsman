@@ -3,9 +3,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+import requests
+from bs4 import BeautifulSoup
+import re
 
-from .models import League, LeagueMember
-from .serializers import LeagueSerializer, LeagueDetailSerializer, LeagueMemberSerializer
+from .models import League, LeagueMember, PlayerNameMapping
+from .serializers import LeagueSerializer, LeagueDetailSerializer, LeagueMemberSerializer, PlayerNameMappingSerializer
 from users.models import Club, ClubUser
 from messaging.models import Message
 
@@ -166,6 +169,223 @@ class LeagueViewSet(viewsets.ModelViewSet):
             "detail": f"Message sent to {messages_sent} league members.",
             "messages_sent": messages_sent
         })
+
+    @action(detail=True, methods=['get'])
+    def fetch_team_members(self, request, pk=None):
+        """
+        Fetch team members from the team website.
+        """
+        league = self.get_object()
+        
+        # Check if team_link is provided
+        if not league.team_link:
+            return Response(
+                {"error": "No team link provided for this league."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Fetch the team website
+            response = requests.get(league.team_link)
+            response.raise_for_status()
+            
+            # Parse the HTML content
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Extract player information
+            # This is specific to the format of the team website
+            # Example: https://www.cgleague.co.uk/archives/team.php?L=NSI&T=Westlands+A
+            players = []
+            
+            # Find the table with player information
+            # The table typically has a header with "Registered players"
+            player_table = None
+            for header in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5']):
+                if 'registered players' in header.text.lower():
+                    # Find the next table after this header
+                    player_table = header.find_next('table')
+                    break
+            
+            if not player_table:
+                # Try to find any table that might contain player information
+                tables = soup.find_all('table')
+                for table in tables:
+                    if 'name' in table.text.lower() and ('date' in table.text.lower() or 'registration' in table.text.lower()):
+                        player_table = table
+                        break
+            
+            if not player_table:
+                return Response(
+                    {"error": "Could not find player information on the team website."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Extract player names from the table
+            rows = player_table.find_all('tr')
+            for row in rows[1:]:  # Skip header row
+                cells = row.find_all('td')
+                if cells and len(cells) > 0:
+                    # First cell typically contains the player name
+                    player_name = cells[0].text.strip()
+                    if player_name and not player_name.isdigit() and player_name.lower() != "customise this table":
+                        # Split name into first and last name
+                        name_parts = player_name.split()
+                        if len(name_parts) >= 2:
+                            first_name = name_parts[0]
+                            last_name = ' '.join(name_parts[1:])
+                            players.append({
+                                'first_name': first_name,
+                                'last_name': last_name,
+                                'full_name': player_name
+                            })
+            
+            # Check for existing name mappings
+            mappings = PlayerNameMapping.objects.filter(league=league)
+            for player in players:
+                # Check if there's a mapping for this player
+                mapping = mappings.filter(
+                    roster_first_name=player['first_name'],
+                    roster_last_name=player['last_name']
+                ).first()
+                
+                if mapping:
+                    player['mapped_user_id'] = mapping.user.id
+                    player['mapped_user_name'] = f"{mapping.user.first_name} {mapping.user.last_name}"
+            
+            return Response(players, status=status.HTTP_200_OK)
+            
+        except requests.RequestException as e:
+            return Response(
+                {"error": f"Failed to fetch team website: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"An error occurred while processing team data: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def create_name_mapping(self, request, pk=None):
+        """
+        Create a mapping between a roster name and a club member.
+        """
+        league = self.get_object()
+        
+        # Validate input
+        roster_first_name = request.data.get('roster_first_name')
+        roster_last_name = request.data.get('roster_last_name')
+        roster_full_name = request.data.get('roster_full_name')
+        user_id = request.data.get('user_id')
+        
+        if not all([roster_first_name, roster_last_name, roster_full_name, user_id]):
+            return Response(
+                {"error": "Missing required fields."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Check if mapping already exists
+            existing_mapping = PlayerNameMapping.objects.filter(
+                league=league,
+                roster_first_name=roster_first_name,
+                roster_last_name=roster_last_name
+            ).first()
+            
+            if existing_mapping:
+                # Update existing mapping
+                existing_mapping.user_id = user_id
+                existing_mapping.save()
+                serializer = PlayerNameMappingSerializer(existing_mapping)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            
+            # Create new mapping
+            mapping = PlayerNameMapping.objects.create(
+                league=league,
+                roster_first_name=roster_first_name,
+                roster_last_name=roster_last_name,
+                roster_full_name=roster_full_name,
+                user_id=user_id
+            )
+            
+            serializer = PlayerNameMappingSerializer(mapping)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to create name mapping: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['delete'])
+    def delete_name_mapping(self, request, pk=None):
+        """
+        Delete a name mapping.
+        """
+        league = self.get_object()
+        mapping_id = request.data.get('mapping_id')
+        
+        if not mapping_id:
+            return Response(
+                {"error": "Mapping ID is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            mapping = PlayerNameMapping.objects.get(id=mapping_id, league=league)
+            mapping.delete()
+            
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+        except PlayerNameMapping.DoesNotExist:
+            return Response(
+                {"error": "Mapping not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to delete name mapping: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['delete'])
+    def remove_roster_player(self, request, pk=None):
+        """
+        Remove a player from the roster (by creating a mapping with null user).
+        This is used to hide specific players from the roster.
+        """
+        league = self.get_object()
+        
+        # Validate input
+        roster_first_name = request.data.get('roster_first_name')
+        roster_last_name = request.data.get('roster_last_name')
+        roster_full_name = request.data.get('roster_full_name')
+        
+        if not all([roster_first_name, roster_last_name, roster_full_name]):
+            return Response(
+                {"error": "Missing required fields."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Create a special mapping with user_id=-1 to indicate a player to be hidden
+            mapping, created = PlayerNameMapping.objects.update_or_create(
+                league=league,
+                roster_first_name=roster_first_name,
+                roster_last_name=roster_last_name,
+                defaults={
+                    'roster_full_name': roster_full_name,
+                    'user_id': -1  # Special value to indicate a player to be hidden
+                }
+            )
+            
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to remove player from roster: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class LeagueMemberViewSet(viewsets.ModelViewSet):
     """

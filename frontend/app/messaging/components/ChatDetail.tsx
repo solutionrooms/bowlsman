@@ -134,11 +134,8 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
       {/* Chat header */}
       <div className="bg-white border-b border-gray-200 p-4 flex justify-between items-center">
         <div>
-          <h2 className="text-lg font-semibold">
-            {activeChat.name || 
-              (activeChat.chat_type === 'direct' && activeChat.members.length === 2 
-                ? `Chat with ${activeChat.members.find(m => m.user !== activeChat.created_by)?.user_details.full_name || 'User'}`
-                : `${activeChat.chat_type.charAt(0).toUpperCase() + activeChat.chat_type.slice(1)} Chat`)}
+          <h2 className="text-xl font-semibold">
+            {activeChat.display_name}
           </h2>
           <p className="text-sm text-gray-500">
             {activeChat.members.length} members • Created {formatTime(activeChat.created_at)}

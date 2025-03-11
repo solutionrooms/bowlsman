@@ -15,6 +15,7 @@ interface Chat {
   updated_at: string;
   member_count: number;
   unread_count: number;
+  display_name: string;
   last_message: {
     id: number;
     content: string;

@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_nested import routers
 from .views import (
     MessageViewSet, ClubMemberViewSet, ChatViewSet, 
-    ChatMessageViewSet, get_unread_count
+    ChatMessageViewSet, get_unread_count, search_users
 )
 from . import views
 
@@ -22,4 +22,5 @@ urlpatterns = [
     path('', include(chat_router.urls)),
     path('read-message/<int:message_id>/', views.read_message, name='read-message'),
     path('unread-count/', views.get_unread_count, name='unread-count'),
+    path('search-users/', search_users, name='search-users'),
 ]

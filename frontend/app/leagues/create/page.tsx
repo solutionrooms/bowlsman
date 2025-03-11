@@ -50,7 +50,7 @@ interface ClubUserResponse {
   };
 }
 
-export default function CreateLeaguePage() {
+export default function CreateTeamPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -63,9 +63,10 @@ export default function CreateLeaguePage() {
   // Form state
   const [name, setName] = useState('');
   const [season, setSeason] = useState(new Date().getFullYear().toString());
-  const [selectedClub, setSelectedClub] = useState<number | null>(null);
   const [selectedCaptain, setSelectedCaptain] = useState<number | null>(null);
   const [selectedDeputy, setSelectedDeputy] = useState<number | null>(null);
+  const [leagueTableLink, setLeagueTableLink] = useState('');
+  const [teamLink, setTeamLink] = useState('');
   
   // Search state
   const [captainSearchText, setCaptainSearchText] = useState('');
@@ -99,46 +100,18 @@ export default function CreateLeaguePage() {
         setCurrentClub(current_club);
         
         // Filter clubs where user is admin
-        let adminClubsList = clubs.filter(club => club.is_admin);
-        
-        // Log admin status for debugging
-        console.log('Current club:', current_club);
-        console.log('User clubs:', clubs);
-        console.log('Admin clubs from clubs array:', adminClubsList);
-        
-        // If current club exists, always check with backend directly
-        if (current_club) {
-          try {
-            const adminCheckResponse = await api.get<AdminStatusResponse>(`club-admin-status?club_id=${current_club.id}`);
-            console.log('Admin status check from backend:', adminCheckResponse.data);
-            
-            // If backend says user is admin but it's not in adminClubsList, add it
-            if (adminCheckResponse.data.is_admin) {
-              const alreadyInList = adminClubsList.some(club => club.id === current_club.id);
-              if (!alreadyInList) {
-                // Add current club to admin clubs list with is_admin set to true
-                const updatedClub = { ...current_club, is_admin: true };
-                adminClubsList = [...adminClubsList, updatedClub];
-                console.log('Updated admin clubs list:', adminClubsList);
-              }
-            }
-          } catch (err) {
-            console.error('Error checking admin status:', err);
-          }
-        }
-        
+        const adminClubsList = clubs.filter(club => club.is_admin);
         setAdminClubs(adminClubsList);
         
-        // If user has only one admin club, select it by default
-        if (adminClubsList.length === 1) {
-          setSelectedClub(adminClubsList[0].id);
-          await fetchClubMembers(adminClubsList[0].id);
+        if (current_club) {
+          // Fetch club members for the current club
+          await fetchClubMembers(current_club.id);
         }
         
         setLoading(false);
       } catch (err: any) {
-        console.error('Error fetching data:', err);
-        setError('Failed to load data: ' + (err.response?.data?.error || err.message));
+        console.error('Error fetching user data:', err);
+        setError('Failed to load user data: ' + (err.response?.data?.error || err.message));
         setLoading(false);
       }
     };
@@ -148,37 +121,39 @@ export default function CreateLeaguePage() {
 
   const fetchClubMembers = async (clubId: number) => {
     try {
-      const response = await api.get<ClubUserResponse[]>(`club-users?club_id=${clubId}`);
+      // Fetch club members
+      const membersResponse = await api.get<ClubUserResponse[]>(`club-users?club_id=${clubId}`);
       
-      // Extract user data from the response
-      const members = response.data.map((cu) => {
-        // Handle both old and new response formats
-        if (typeof cu.user === 'object') {
-          return cu.user;
-        } else {
-          // If we get the old format, create a basic user object
-          return {
-            id: cu.user as number,
-            username: cu.user_details?.username || '',
+      // Extract user details and add search_name for filtering
+      const members = membersResponse.data.map(member => {
+        let user: User;
+        
+        if (typeof member.user === 'number') {
+          // If user is just an ID, use user_details
+          if (!member.user_details) {
+            throw new Error('User details missing');
+          }
+          
+          user = {
+            id: member.user_details.id,
+            username: member.user_details.username,
             email: '',
-            first_name: cu.user_details?.display_name?.split(' ')[0] || '',
-            last_name: cu.user_details?.display_name?.split(' ')[1] || '',
-            display_name: cu.user_details?.display_name || '',
-            search_name: (cu.user_details?.display_name || '').toLowerCase()
+            first_name: '',
+            last_name: '',
+            display_name: member.user_details.display_name
           };
+        } else {
+          // If user is a full object
+          user = member.user;
         }
+        
+        // Add search_name for filtering
+        user.search_name = (user.display_name || `${user.first_name} ${user.last_name} ${user.username}`).toLowerCase();
+        
+        return user;
       });
       
-      // Add display_name and search_name to each user if not already present
-      const enhancedMembers = members.map(member => ({
-        ...member,
-        display_name: member.display_name || `${member.first_name} ${member.last_name} (${member.username})`,
-        search_name: member.search_name || `${member.first_name} ${member.last_name} ${member.username}`.toLowerCase()
-      }));
-      
-      setClubMembers(enhancedMembers);
-      
-      // Reset selections
+      setClubMembers(members);
       setSelectedCaptain(null);
       setSelectedDeputy(null);
       setSelectedCaptainUser(null);
@@ -191,22 +166,14 @@ export default function CreateLeaguePage() {
     }
   };
 
-  const handleClubChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const clubId = Number(e.target.value);
-    setSelectedClub(clubId);
-    setSelectedCaptain(null);
-    setSelectedDeputy(null);
-    
-    if (clubId) {
-      await fetchClubMembers(clubId);
-    } else {
-      setClubMembers([]);
-    }
-  };
-
   // Filter captains based on search text
   useEffect(() => {
-    if (!captainSearchText.trim() || !clubMembers.length) {
+    if (!captainSearchText.trim() && clubMembers.length) {
+      // Show all club members when search text is empty
+      setFilteredCaptains(clubMembers);
+      setShowCaptainDropdown(true);
+      return;
+    } else if (!clubMembers.length) {
       setFilteredCaptains([]);
       setShowCaptainDropdown(false);
       return;
@@ -223,7 +190,13 @@ export default function CreateLeaguePage() {
 
   // Filter deputies based on search text
   useEffect(() => {
-    if (!deputySearchText.trim() || !clubMembers.length) {
+    if (!deputySearchText.trim() && clubMembers.length) {
+      // Show all club members when search text is empty (except the selected captain)
+      const filtered = clubMembers.filter(member => member.id !== selectedCaptain);
+      setFilteredDeputies(filtered);
+      setShowDeputyDropdown(true);
+      return;
+    } else if (!clubMembers.length) {
       setFilteredDeputies([]);
       setShowDeputyDropdown(false);
       return;
@@ -264,7 +237,7 @@ export default function CreateLeaguePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!name || !season || !selectedClub || !selectedCaptain) {
+    if (!name || !season || !currentClub || !selectedCaptain) {
       setError('Please fill in all required fields');
       return;
     }
@@ -273,27 +246,14 @@ export default function CreateLeaguePage() {
       setSubmitting(true);
       setError(null);
       
-      // Double-check admin status before submitting
-      try {
-        const adminCheckResponse = await api.get<AdminStatusResponse>(`club-admin-status?club_id=${selectedClub}`);
-        console.log('Admin status check before submit:', adminCheckResponse.data);
-        
-        if (!adminCheckResponse.data.is_admin) {
-          setError('You must be a club admin to create a league. The backend reports you are not an admin for this club.');
-          setSubmitting(false);
-          return;
-        }
-      } catch (err) {
-        console.error('Error checking admin status:', err);
-        // Continue with submission even if admin check fails
-      }
-      
       const leagueData = {
         name,
         season,
-        club_id: selectedClub,
+        club_id: currentClub.id,
         captain_id: selectedCaptain,
-        deputy_id: selectedDeputy || null
+        deputy_id: selectedDeputy || null,
+        league_table_link: leagueTableLink || null,
+        team_link: teamLink || null
       };
       
       await api.post('leagues/', leagueData);
@@ -322,14 +282,17 @@ export default function CreateLeaguePage() {
     <div className="min-h-screen bg-gray-100">
       <Navigation onLogout={handleLogout} />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Create New League</h1>
-          <Link
-            href="/leagues"
-            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            ← Back to Leagues
-          </Link>
+        <div className="mb-6">
+          <div className="flex justify-between items-center">
+            <h1 className="text-2xl font-bold">Create Team</h1>
+            <Link
+              href="/leagues"
+              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              ← Back to Teams
+            </Link>
+          </div>
+          <p className="text-gray-500">Create a new team for your club</p>
         </div>
         
         {error && (
@@ -347,16 +310,34 @@ export default function CreateLeaguePage() {
           </div>
         )}
         
-        {adminClubs.length === 0 ? (
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg p-6">
-            <div className="text-center">
-              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">Permission Denied</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                You must be a club administrator to create leagues.
-              </p>
+        {!currentClub ? (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  You need to be a member of a club to create a team. Please join or create a club first.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : !currentClub.is_admin ? (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  You need to be an admin of {currentClub.name} to create a team.
+                </p>
+              </div>
             </div>
           </div>
         ) : (
@@ -365,29 +346,17 @@ export default function CreateLeaguePage() {
               <form onSubmit={handleSubmit}>
                 <div className="space-y-6">
                   <div>
-                    <label htmlFor="club" className="block text-sm font-medium text-gray-700">
-                      Club <span className="text-red-500">*</span>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Club
                     </label>
-                    <select
-                      id="club"
-                      name="club"
-                      className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-                      value={selectedClub || ''}
-                      onChange={handleClubChange}
-                      required
-                    >
-                      <option value="">Select a club</option>
-                      {adminClubs.map(club => (
-                        <option key={club.id} value={club.id}>
-                          {club.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="mt-1 p-2 bg-gray-100 rounded-md text-gray-700">
+                      {currentClub.name}
+                    </div>
                   </div>
                   
                   <div>
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                      League Name <span className="text-red-500">*</span>
+                      Team Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -428,11 +397,10 @@ export default function CreateLeaguePage() {
                         id="captain"
                         name="captain"
                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        placeholder={selectedClub ? "Search for a captain" : "Select a club first"}
+                        placeholder="Search for a captain"
                         value={captainSearchText}
                         onChange={(e) => setCaptainSearchText(e.target.value)}
-                        onClick={() => selectedClub && setShowCaptainDropdown(true)}
-                        disabled={!selectedClub}
+                        onClick={() => setShowCaptainDropdown(true)}
                         required
                       />
                       {showCaptainDropdown && (
@@ -465,11 +433,11 @@ export default function CreateLeaguePage() {
                         id="deputy"
                         name="deputy"
                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        placeholder={selectedClub ? "Search for a deputy" : "Select a club first"}
+                        placeholder="Search for a deputy"
                         value={deputySearchText}
                         onChange={(e) => setDeputySearchText(e.target.value)}
-                        onClick={() => selectedClub && setShowDeputyDropdown(true)}
-                        disabled={!selectedClub || !selectedCaptain}
+                        onClick={() => setShowDeputyDropdown(true)}
+                        disabled={!selectedCaptain}
                       />
                       {showDeputyDropdown && (
                         <div className="absolute z-10 w-full mt-1 bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-y-auto">
@@ -496,6 +464,42 @@ export default function CreateLeaguePage() {
                     )}
                   </div>
                   
+                  <div>
+                    <label htmlFor="leagueTableLink" className="block text-sm font-medium text-gray-700">
+                      League Table Link (Optional)
+                    </label>
+                    <input
+                      type="url"
+                      name="leagueTableLink"
+                      id="leagueTableLink"
+                      className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      value={leagueTableLink}
+                      onChange={(e) => setLeagueTableLink(e.target.value)}
+                      placeholder="https://example.com/league-table"
+                    />
+                    <p className="mt-1 text-sm text-gray-500">
+                      URL to the league's standings/table
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label htmlFor="teamLink" className="block text-sm font-medium text-gray-700">
+                      Team Link (Optional)
+                    </label>
+                    <input
+                      type="url"
+                      name="teamLink"
+                      id="teamLink"
+                      className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      value={teamLink}
+                      onChange={(e) => setTeamLink(e.target.value)}
+                      placeholder="https://example.com/team-page"
+                    />
+                    <p className="mt-1 text-sm text-gray-500">
+                      URL to the team's website or page
+                    </p>
+                  </div>
+                  
                   <div className="flex justify-end">
                     <Link
                       href="/leagues"
@@ -508,7 +512,7 @@ export default function CreateLeaguePage() {
                       disabled={submitting}
                       className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     >
-                      {submitting ? 'Creating...' : 'Create League'}
+                      {submitting ? 'Creating...' : 'Create Team'}
                     </button>
                   </div>
                 </div>

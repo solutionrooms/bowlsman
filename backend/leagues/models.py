@@ -22,6 +22,8 @@ class League(models.Model):
         blank=True, 
         related_name='deputy_leagues'
     )
+    league_table_link = models.URLField(max_length=500, null=True, blank=True, help_text="URL to the league's standings/table")
+    team_link = models.URLField(max_length=500, null=True, blank=True, help_text="URL to the team's website or page")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -45,4 +47,22 @@ class LeagueMember(models.Model):
         ordering = ['user__first_name', 'user__last_name']
     
     def __str__(self):
-        return f"{self.user.get_full_name()} - {self.league.name}" 
+        return f"{self.user.get_full_name()} - {self.league.name}"
+
+class PlayerNameMapping(models.Model):
+    """
+    Stores mappings between roster names and club members for consistent importing.
+    """
+    league = models.ForeignKey(League, on_delete=models.CASCADE, related_name='name_mappings')
+    roster_first_name = models.CharField(max_length=100)
+    roster_last_name = models.CharField(max_length=100)
+    roster_full_name = models.CharField(max_length=200)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='roster_mappings')
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('league', 'roster_first_name', 'roster_last_name')
+        ordering = ['roster_full_name']
+    
+    def __str__(self):
+        return f"Mapping: {self.roster_full_name} -> {self.user.get_full_name()} in {self.league.name}" 
