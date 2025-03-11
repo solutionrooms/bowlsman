@@ -19,6 +19,8 @@ class SocialBowl(models.Model):
     time = models.TimeField(null=True, blank=True)  # Optional for general notices
     location = models.CharField(max_length=255, blank=True)  # Optional for general notices
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # For 'for_sale' notices
+    image = models.ImageField(upload_to='notices/images/', null=True, blank=True)  # For notice images
+    pdf_file = models.FileField(upload_to='notices/pdfs/', null=True, blank=True)  # For notice PDF attachments
     club = models.ForeignKey(Club, on_delete=models.CASCADE, related_name='social_bowls')
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_social_bowls')
     created_at = models.DateTimeField(auto_now_add=True)

@@ -17,6 +17,8 @@ type Notice = {
   time?: string;
   location?: string;
   price?: number;
+  image?: string;
+  pdf_file?: string;
   participant_count: number;
   is_participant: boolean;
   participants: {
@@ -38,6 +40,7 @@ type Notice = {
 type Club = {
   id: number;
   name: string;
+  is_admin?: boolean;
 };
 
 type User = {
@@ -54,6 +57,9 @@ export default function NoticeDetailPage({ params }: { params: { id: string } })
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [currentClub, setCurrentClub] = useState<Club | null>(null);
+  const [chatLoading, setChatLoading] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [canEdit, setCanEdit] = useState<boolean>(false);
   const id = params.id;
 
   const handleLogout = () => {
@@ -77,6 +83,7 @@ export default function NoticeDetailPage({ params }: { params: { id: string } })
             const response = await api.get<{user: User, current_club: Club | null}>('/users/me/');
             if (isMounted && response.data.current_club) {
               setCurrentClub(response.data.current_club);
+              setCurrentUser(response.data.user);
               localStorage.setItem('currentClub', JSON.stringify(response.data.current_club));
             }
           }
@@ -103,6 +110,39 @@ export default function NoticeDetailPage({ params }: { params: { id: string } })
         const response = await api.get<Notice>(`/notices/${id}/`);
         setNotice(response.data);
         setError(null);
+        
+        // Also fetch current user if not already fetched
+        if (!currentUser) {
+          const userResponse = await api.get<{user: User, current_club: Club | null}>('/users/me/');
+          setCurrentUser(userResponse.data.user);
+          
+          // Check if user is admin of the club
+          if (userResponse.data.current_club) {
+            const adminCheckResponse = await api.get<{club_id: number, is_admin: boolean, username: string}>(
+              `club-admin-status?club_id=${userResponse.data.current_club.id}`
+            );
+            
+            const isAdmin = adminCheckResponse.data.is_admin;
+            const isCreator = response.data.created_by.id === userResponse.data.user.id;
+            
+            setCanEdit(isAdmin || isCreator);
+          }
+        } else {
+          // Check if current user is the creator or an admin
+          const isCreator = response.data.created_by.id === currentUser.id;
+          
+          // Check if user is admin of the club
+          if (currentClub) {
+            const adminCheckResponse = await api.get<{club_id: number, is_admin: boolean, username: string}>(
+              `club-admin-status?club_id=${currentClub.id}`
+            );
+            
+            const isAdmin = adminCheckResponse.data.is_admin;
+            setCanEdit(isAdmin || isCreator);
+          } else {
+            setCanEdit(isCreator);
+          }
+        }
       } catch (err) {
         console.error('Error fetching notice:', err);
         setError('Failed to load notice. It may have been removed or you do not have permission to view it.');
@@ -112,7 +152,7 @@ export default function NoticeDetailPage({ params }: { params: { id: string } })
     };
 
     fetchNotice();
-  }, [id]);
+  }, [id, currentUser, currentClub]);
 
   const formatDateTime = (date?: string, time?: string) => {
     if (!date) return 'No date specified';
@@ -148,6 +188,27 @@ export default function NoticeDetailPage({ params }: { params: { id: string } })
       case 'general': return 'General Notice';
       case 'for_sale': return 'For Sale';
       default: return type;
+    }
+  };
+
+  const handleStartChat = async () => {
+    if (!notice || !notice.created_by) return;
+    
+    setChatLoading(true);
+    try {
+      // Create a direct chat with the notice creator
+      const response = await api.post('/chats/', {
+        chat_type: 'direct',
+        club: currentClub?.id,
+        members: [notice.created_by.id]
+      });
+      
+      // Redirect to the chat page
+      router.push(`/messages/${response.data.id}`);
+    } catch (err) {
+      console.error('Error creating chat:', err);
+      setError('Failed to start chat. Please try again.');
+      setChatLoading(false);
     }
   };
 
@@ -249,88 +310,154 @@ export default function NoticeDetailPage({ params }: { params: { id: string } })
                 </svg>
                 Posted on {new Date(notice.created_at).toLocaleDateString()}
               </div>
-              {notice.notice_type === 'social_bowl' && (
-                <div className="mt-2 flex items-center text-sm text-gray-500">
-                  <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
-                  </svg>
-                  {notice.participant_count} participants
-                </div>
-              )}
-              {notice.notice_type === 'for_sale' && notice.price !== undefined && (
-                <div className="mt-2 flex items-center text-sm font-medium text-green-600">
-                  <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.736 6.979C9.208 6.193 9.696 6 10 6c.304 0 .792.193 1.264.979a1 1 0 001.715-1.029C12.279 4.784 11.232 4 10 4s-2.279.784-2.979 1.95c-.285.475-.507 1-.67 1.55H6a1 1 0 000 2h.013a9.358 9.358 0 000 1H6a1 1 0 100 2h.351c.163.55.385 1.075.67 1.55C7.721 15.216 8.768 16 10 16s2.279-.784 2.979-1.95a1 1 0 10-1.715-1.029c-.472.786-.96.979-1.264.979-.304 0-.792-.193-1.264-.979a4.265 4.265 0 01-.264-.521H10a1 1 0 100-2H8.017a7.36 7.36 0 010-1H10a1 1 0 100-2H8.472c.08-.185.167-.36.264-.521z" clipRule="evenodd" />
-                  </svg>
-                  ${typeof notice.price === 'number' ? notice.price.toFixed(2) : parseFloat(String(notice.price || 0)).toFixed(2)}
-                </div>
-              )}
             </div>
           </div>
-          <div className="mt-4 flex md:mt-0 md:ml-4">
-            <Link
-              href="/noticeboard"
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              Back to All
-            </Link>
-            {notice.notice_type === 'social_bowl' && (
-              notice.is_participant ? (
-                <button
-                  type="button"
-                  onClick={() => handleJoinLeave('leave')}
-                  disabled={actionLoading}
-                  className="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+          <div className="mt-5 flex lg:mt-0 lg:ml-4">
+            <span className="hidden sm:block ml-3">
+              <Link
+                href="/noticeboard"
+                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Back to Noticeboard
+              </Link>
+            </span>
+            
+            {canEdit && (
+              <span className="sm:ml-3">
+                <Link
+                  href={`/noticeboard/${id}/edit`}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
-                  {actionLoading ? 'Processing...' : 'Leave Event'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleJoinLeave('join')}
-                  disabled={actionLoading}
-                  className="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                >
-                  {actionLoading ? 'Processing...' : 'Join Event'}
-                </button>
-              )
+                  <svg className="-ml-1 mr-2 h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-10 10a2 2 0 01-1.414.586H4a1 1 0 01-1-1v-1a2 2 0 01.586-1.414l10-10z" />
+                  </svg>
+                  Edit Notice
+                </Link>
+              </span>
             )}
+            
+            <span className="sm:ml-3">
+              <button
+                type="button"
+                onClick={handleStartChat}
+                disabled={chatLoading}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                {chatLoading ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Starting chat...
+                  </>
+                ) : (
+                  <>
+                    <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                    </svg>
+                    Chat with {notice.created_by.username}
+                  </>
+                )}
+              </button>
+            </span>
           </div>
         </div>
 
         <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
           <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">Description</h3>
-            <div className="mt-2 text-sm text-gray-500 whitespace-pre-wrap">
-              {notice.description || 'No description provided.'}
+            <div className="prose max-w-none">
+              {notice.description.split('\n').map((paragraph, index) => (
+                <p key={index}>{paragraph}</p>
+              ))}
             </div>
+
+            {/* Display uploaded image if available */}
+            {notice.image && (
+              <div className="mt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Attached Image</h3>
+                <div className="mt-2 flex justify-center">
+                  <img 
+                    src={notice.image} 
+                    alt="Notice attachment" 
+                    className="max-w-full h-auto rounded-lg shadow-md max-h-96 object-contain"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Display PDF link if available */}
+            {notice.pdf_file && (
+              <div className="mt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Attached Document</h3>
+                <div className="mt-2">
+                  <a 
+                    href={notice.pdf_file} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <svg className="-ml-1 mr-2 h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                    </svg>
+                    View PDF Document
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {notice.notice_type === 'for_sale' && notice.price !== null && (
+              <div className="mt-6">
+                <h3 className="text-lg font-medium text-gray-900">Price</h3>
+                <p className="mt-2 text-3xl font-bold text-gray-900">£{typeof notice.price === 'number' ? notice.price.toFixed(2) : notice.price}</p>
+              </div>
+            )}
+
+            {notice.notice_type === 'social_bowl' && (
+              <div className="mt-6">
+                <h3 className="text-lg font-medium text-gray-900">Participants ({notice.participant_count})</h3>
+                <div className="mt-2">
+                  {notice.participants.length > 0 ? (
+                    <ul className="divide-y divide-gray-200">
+                      {notice.participants.map((participant) => (
+                        <li key={participant.id} className="py-4 flex">
+                          <div className="ml-3">
+                            <p className="text-sm font-medium text-gray-900">{participant.user.username}</p>
+                            <p className="text-sm text-gray-500">Joined on {new Date(participant.joined_at).toLocaleDateString()}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-gray-500">No participants yet. Be the first to join!</p>
+                  )}
+                </div>
+
+                <div className="mt-6">
+                  {notice.is_participant ? (
+                    <button
+                      type="button"
+                      onClick={() => handleJoinLeave('leave')}
+                      disabled={actionLoading}
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                    >
+                      {actionLoading ? 'Processing...' : 'Leave Social Bowl'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleJoinLeave('join')}
+                      disabled={actionLoading}
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      {actionLoading ? 'Processing...' : 'Join Social Bowl'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-
-        {notice.notice_type === 'social_bowl' && notice.participants.length > 0 && (
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <div className="px-4 py-5 sm:px-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900">Participants</h3>
-              <p className="mt-1 max-w-2xl text-sm text-gray-500">
-                People who have joined this social bowling event.
-              </p>
-            </div>
-            <div className="border-t border-gray-200">
-              <ul className="divide-y divide-gray-200">
-                {notice.participants.map((participant) => (
-                  <li key={participant.id} className="px-4 py-3 sm:px-6">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-900">{participant.user.username}</p>
-                      <p className="text-sm text-gray-500">
-                        Joined {new Date(participant.joined_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -29,7 +29,7 @@ class SocialBowlSerializer(serializers.ModelSerializer):
         model = SocialBowl
         fields = [
             'id', 'title', 'description', 'notice_type', 'date', 'time', 
-            'location', 'price', 'club', 'created_by', 'created_at', 
+            'location', 'price', 'image', 'pdf_file', 'club', 'created_by', 'created_at', 
             'updated_at', 'participant_count', 'is_participant', 'participants'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by']

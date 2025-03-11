@@ -29,7 +29,16 @@ class IsClubMemberOrReadOnly(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
         
-        # Only allow club members to modify
+        # Allow if user is the creator of the notice
+        if obj.created_by == request.user:
+            return True
+            
+        # Allow if user is an admin of the club
+        club_user = ClubUser.objects.filter(user=request.user, club=obj.club).first()
+        if club_user and club_user.is_admin:
+            return True
+            
+        # For other operations, only allow club members to modify
         return ClubUser.objects.filter(user=request.user, club=obj.club).exists()
 
 
