@@ -2,12 +2,13 @@ import logging
 import time
 import json
 from django.http import HttpResponse
+from .models import ApiLog
 
 logger = logging.getLogger('django.request')
 
 class RequestLoggingMiddleware:
     """
-    Middleware to log all HTTP requests and responses
+    Middleware to log all HTTP requests and responses and store API calls in database
     """
     def __init__(self, get_response):
         self.get_response = get_response
@@ -18,12 +19,46 @@ class RequestLoggingMiddleware:
         path = request.path
         method = request.method
         
-        # Log request body for POST/PUT/PATCH requests
+        # Process the request and get response
+        response = self.get_response(request)
+        
+        # Calculate duration
+        duration = time.time() - start_time
+        
+        # Log API calls to database if path starts with /api/
+        if path.startswith('/api/'):
+            try:
+                # Prepare request body
+                request_body = None
+                if method in ['POST', 'PUT', 'PATCH'] and hasattr(request, 'body'):
+                    content_type = request.META.get('CONTENT_TYPE', '')
+                    if 'application/json' in content_type:
+                        try:
+                            request_body = json.loads(request.body)
+                        except json.JSONDecodeError:
+                            request_body = {'error': 'Invalid JSON data'}
+                    elif 'multipart/form-data' in content_type:
+                        request_body = {'files': [f.name for f in request.FILES.values()]} if request.FILES else None
+                
+                # Create API log entry
+                ApiLog.objects.create(
+                    user=request.user if request.user.is_authenticated else None,
+                    method=method,
+                    path=path,
+                    query_params=dict(request.GET.items()) if request.GET else None,
+                    request_body=request_body,
+                    status_code=response.status_code,
+                    response_time=duration,
+                    ip_address=request.META.get('REMOTE_ADDR'),
+                    user_agent=request.META.get('HTTP_USER_AGENT')
+                )
+            except Exception as e:
+                logger.error(f"Failed to create API log entry: {str(e)}")
+        
+        # Continue with existing logging
         if method in ['POST', 'PUT', 'PATCH'] and hasattr(request, 'body'):
-            # Check if the content type is multipart/form-data or not JSON
             content_type = request.META.get('CONTENT_TYPE', '')
             if 'multipart/form-data' in content_type:
-                # For multipart/form-data, log file names if available
                 if hasattr(request, 'FILES') and request.FILES:
                     file_info = ", ".join([f"{name}: {f.name} ({f.size} bytes)" for name, f in request.FILES.items()])
                     logger.info(f"API Request: {method} {path} - Multipart form with files: {file_info}")
@@ -46,26 +81,19 @@ class RequestLoggingMiddleware:
         if request.GET:
             logger.info(f"Query params: {dict(request.GET.items())}")
         
-        # Get the response
-        response = self.get_response(request)
-        
         # Log response details
-        duration = time.time() - start_time
         status_code = response.status_code
         
         # Try to log response content for API calls
         if path.startswith('/api/'):
             try:
-                # Check if the content is JSON before trying to parse it
                 content_type = response.get('Content-Type', '')
                 if 'application/json' in content_type and isinstance(response, HttpResponse) and hasattr(response, 'content'):
                     try:
                         content = json.loads(response.content.decode('utf-8'))
                         if '/competitions' in path:
-                            # For competition endpoints, log full response data
                             logger.info(f"API Response: {method} {path} - {status_code} - {duration:.2f}s - Data: {json.dumps(content)}")
                         else:
-                            # For other endpoints, log basic response info
                             if isinstance(content, list):
                                 logger.info(f"API Response: {method} {path} - {status_code} - {duration:.2f}s - Items: {len(content)}")
                             else:

@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'social',
     'leagues',
     'rest_framework.authtoken',
+    'config',  # Add config app for ApiLog model
 ]
 
 MIDDLEWARE = [
