@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import api from '../../../src/lib/axios';
+import api, { getApiUrl } from '../../../src/lib/axios';
 
 interface Chat {
   id: number;
@@ -102,6 +102,7 @@ interface MessagingContextType {
   markChatAsRead: (chatId: number) => Promise<void>;
   addMemberToChat: (chatId: number, userId: number) => Promise<void>;
   removeMemberFromChat: (chatId: number, userId: number) => Promise<void>;
+  deleteChat: (chatId: number) => Promise<void>;
   // Legacy message methods
   messages: Message[];
   fetchMessages: (clubId: number) => Promise<void>;
@@ -433,8 +434,24 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
     try {
       console.log(`Marking chat ${chatId} as read`);
       
-      // Try with the correct URL format for DRF actions
-      await api.post(`/api/chats/${chatId}/mark_as_read/`);
+      // Get the current club ID from localStorage
+      let clubId = null;
+      if (typeof window !== 'undefined') {
+        const storedClub = localStorage.getItem('currentClub');
+        if (storedClub) {
+          try {
+            const club = JSON.parse(storedClub);
+            clubId = club.id;
+          } catch (e) {
+            console.error('Error parsing current club:', e);
+          }
+        }
+      }
+      
+      // Make API call with the club_id parameter
+      await api.post(`/api/chats/${chatId}/mark_as_read/`, {}, {
+        params: { club_id: clubId }
+      });
       
       // Update the chat in the list
       setChats(prevChats =>
@@ -483,6 +500,44 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, [activeChat, fetchChat]);
 
+  const deleteChat = useCallback(async (chatId: number): Promise<void> => {
+    if (!chatId) return;
+    
+    try {
+      console.log(`Deleting chat ${chatId}`);
+      
+      // Get the current club ID from localStorage
+      let clubId = null;
+      if (typeof window !== 'undefined') {
+        const storedClub = localStorage.getItem('currentClub');
+        if (storedClub) {
+          try {
+            const club = JSON.parse(storedClub);
+            clubId = club.id;
+          } catch (e) {
+            console.error('Error parsing current club:', e);
+          }
+        }
+      }
+      
+      // Make a direct API call with the necessary club_id parameter
+      await api.delete(`/api/chats/${chatId}/`, {
+        params: { club_id: clubId }
+      });
+      
+      // Remove the chat from the list
+      setChats(prevChats => prevChats.filter(chat => chat.id !== chatId));
+      
+      // If the deleted chat was the active chat, clear it
+      if (activeChat && activeChat.id === chatId) {
+        setActiveChat(null);
+      }
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      throw error;
+    }
+  }, [activeChat]);
+
   // Memoize the context value to prevent unnecessary re-renders
   const contextValue = React.useMemo(() => ({
     unreadCount,
@@ -500,7 +555,8 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
     sendMessage,
     markChatAsRead,
     addMemberToChat,
-    removeMemberFromChat
+    removeMemberFromChat,
+    deleteChat
   }), [
     unreadCount,
     fetchUnreadCount,
@@ -517,7 +573,8 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
     sendMessage,
     markChatAsRead,
     addMemberToChat,
-    removeMemberFromChat
+    removeMemberFromChat,
+    deleteChat
   ]);
 
   return (

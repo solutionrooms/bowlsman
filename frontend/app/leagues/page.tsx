@@ -8,6 +8,7 @@ import PageHeading from '../components/PageHeading';
 import pageDescriptions from '../utils/pageDescriptions';
 import Link from 'next/link';
 import { canManageTeam } from '../../src/utils/permissions';
+import CreateChatModal from '../messaging/components/CreateChatModal';
 
 interface League {
   id: number;
@@ -58,6 +59,9 @@ export default function LeaguesPage() {
   const [isStaff, setIsStaff] = useState(false);
   const [userId, setUserId] = useState<number | null>(null);
   const [manageableTeams, setManageableTeams] = useState<Set<number>>(new Set());
+  const [mounted, setMounted] = useState<boolean>(false);
+  const [showCreateChatModal, setShowCreateChatModal] = useState<boolean>(false);
+  const [selectedTeamForChat, setSelectedTeamForChat] = useState<{id: number, name: string} | null>(null);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -66,6 +70,12 @@ export default function LeaguesPage() {
   };
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    
     const fetchData = async () => {
       try {
         setLoading(true);
@@ -122,7 +132,7 @@ export default function LeaguesPage() {
     };
     
     fetchData();
-  }, [router]);
+  }, [mounted, router]);
 
   // Determine which teams the user can manage
   useEffect(() => {
@@ -165,6 +175,15 @@ export default function LeaguesPage() {
       setError('Failed to change club: ' + (err.response?.data?.error || err.message));
       setLoading(false);
     }
+  };
+
+  const handleTeamChatClick = (league: League) => {
+    setSelectedTeamForChat({id: league.id, name: league.name});
+    setShowCreateChatModal(true);
+  };
+  
+  const handleChatCreated = (chatId: number) => {
+    router.push(`/messaging?chat=${chatId}`);
   };
 
   if (loading) {
@@ -281,6 +300,17 @@ export default function LeaguesPage() {
                                   >
                                     Manage<span className="sr-only">, {league.name}</span>
                                   </Link>
+                                  <span className="text-gray-300 mx-1">|</span>
+                                  <a
+                                    href="#"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      handleTeamChatClick(league);
+                                    }}
+                                    className="text-purple-600 hover:text-purple-900"
+                                  >
+                                    Chat<span className="sr-only">, {league.name}</span>
+                                  </a>
                                 </>
                               )}
                             </div>
@@ -320,6 +350,17 @@ export default function LeaguesPage() {
           </div>
         )}
       </div>
+      
+      {showCreateChatModal && selectedTeamForChat && currentClub && (
+        <CreateChatModal
+          isOpen={showCreateChatModal}
+          onClose={() => setShowCreateChatModal(false)}
+          clubId={currentClub.id}
+          onChatCreated={handleChatCreated}
+          initialChatType="team"
+          initialChatName={`${selectedTeamForChat.name} Team Chat`}
+        />
+      )}
     </div>
   );
 } 

@@ -27,12 +27,18 @@ interface UserInfoResponse {
     id: number;
     username: string;
     email: string;
-    clubs?: {
-      id: number;
-      name: string;
-      is_admin: boolean;
-    }[];
+    is_staff: boolean;
   };
+  current_club: {
+    id: number;
+    name: string;
+    is_admin: boolean;
+  } | null;
+  clubs: {
+    id: number;
+    name: string;
+    is_admin: boolean;
+  }[];
 }
 
 interface CreateChatModalProps {
@@ -40,17 +46,21 @@ interface CreateChatModalProps {
   onClose: () => void;
   clubId: number;
   onChatCreated: (chatId: number) => void;
+  initialChatType?: 'direct' | 'group' | 'team' | 'competition';
+  initialChatName?: string;
 }
 
 const CreateChatModal: React.FC<CreateChatModalProps> = ({ 
   isOpen, 
   onClose, 
   clubId,
-  onChatCreated
+  onChatCreated,
+  initialChatType,
+  initialChatName
 }) => {
   const { createChat } = useMessaging();
-  const [chatType, setChatType] = useState<'direct' | 'group' | 'team' | 'competition'>('direct');
-  const [chatName, setChatName] = useState('');
+  const [chatType, setChatType] = useState<'direct' | 'group' | 'team' | 'competition'>(initialChatType || 'direct');
+  const [chatName, setChatName] = useState(initialChatName || '');
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
   const [selectedCompetition, setSelectedCompetition] = useState<number | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -60,15 +70,15 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
 
   // Fetch data only when the modal is opened
   useEffect(() => {
     if (!isOpen || !clubId) return;
     
-    // Reset state when modal opens
-    setChatType('direct');
-    setChatName('');
+    // Reset state when modal opens, but preserve initialChatType and initialChatName if provided
+    setChatType(initialChatType || 'direct');
+    setChatName(initialChatName || '');
     setSelectedUsers([]);
     setSelectedCompetition(null);
     setError('');
@@ -79,7 +89,7 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
     api.get<User[]>(`/api/club-members/${clubId}/`)
       .then(response => {
         // Fetch club roles and admin status for each user
-        api.get(`/club-users/?club=${clubId}`)
+        api.get<any[]>(`/api/club-users/?club=${clubId}`)
           .then(clubUsersResponse => {
             const clubUsers = clubUsersResponse.data as any[];
             
@@ -102,15 +112,20 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
               return {
                 ...user,
                 club_role: clubUser ? clubUser.club_role : '',
-                is_admin: clubUser ? Boolean(clubUser.is_admin) : false
+                is_admin: clubUser ? Boolean(clubUser.is_admin) : false,
+                full_name: `${user.first_name} ${user.last_name}`.trim() || user.username
               };
             });
             
             setUsers(enhancedUsers);
+            // Initially show all users in search results
+            setSearchResults(enhancedUsers);
           })
           .catch(error => {
             console.error('Error fetching club user details:', error);
             setUsers(response.data);
+            // Initially show all users in search results
+            setSearchResults(response.data);
           });
       })
       .catch(error => {
@@ -127,59 +142,61 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
       });
 
     // Check if user is admin
-    api.get<UserInfoResponse>('/api/user-info/')
+    api.get<UserInfoResponse>('/api/users/me/')
       .then(response => {
-        const userClubs = response.data.user.clubs || [];
-        const currentClub = userClubs.find((club) => club.id === clubId);
+        // Check if the user is an admin in the current club
+        const clubs = response.data.clubs || [];
+        const currentClub = clubs.find((club) => club.id === clubId);
         setIsAdmin(currentClub?.is_admin || false);
       })
       .catch(error => {
         console.error('Error checking admin status:', error);
+        // Don't prevent the user from using the component if this fails
+        // Just assume they are not an admin
+        setIsAdmin(false);
       });
-  }, [isOpen, clubId]);
+  }, [isOpen, clubId, initialChatType, initialChatName]);
 
-  // Debounced search function
-  const debouncedSearch = useRef(
-    debounce(async (query: string) => {
-      if (!query.trim() || query.length < 2) {
-        setSearchResults([]);
-        setIsSearching(false);
-        return;
-      }
-
-      try {
-        const response = await api.get<User[]>(`/api/search-users/?q=${query}&club_id=${clubId}`);
-        // Filter out already selected users
-        const filteredResults = response.data.filter(
-          user => !selectedUsers.some(selectedUser => selectedUser.id === user.id)
-        );
-        setSearchResults(filteredResults);
-      } catch (error) {
-        console.error('Error searching users:', error);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 300)
-  ).current;
-
-  // Handle search input change
+  // Replace the debounced API search with local filtering
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value;
+    const query = e.target.value.trim().toLowerCase();
     setSearchQuery(query);
+    setShowDropdown(true);
     
-    if (query.trim() && query.length >= 2) {
-      setIsSearching(true);
-      debouncedSearch(query);
-    } else {
-      setSearchResults([]);
+    if (!query) {
+      // Show all users when search is empty
+      setSearchResults(users.filter(
+        user => !selectedUsers.some(selectedUser => selectedUser.id === user.id)
+      ));
+      return;
     }
+    
+    // Filter users locally based on search query
+    const filtered = users.filter(user => {
+      // Filter out already selected users
+      if (selectedUsers.some(selectedUser => selectedUser.id === user.id)) {
+        return false;
+      }
+      
+      // Search in username, first_name, last_name, email, or full_name
+      return (
+        user.username.toLowerCase().includes(query) ||
+        (user.first_name && user.first_name.toLowerCase().includes(query)) ||
+        (user.last_name && user.last_name.toLowerCase().includes(query)) ||
+        user.email.toLowerCase().includes(query) ||
+        (user.full_name && user.full_name.toLowerCase().includes(query))
+      );
+    });
+    
+    setSearchResults(filtered);
   };
 
   // Handle selecting a user from search results
   const handleSelectUser = (user: User) => {
     setSelectedUsers(prev => [...prev, user]);
     setSearchQuery('');
-    setSearchResults([]);
+    // Update search results to remove selected user
+    setSearchResults(prev => prev.filter(u => u.id !== user.id));
   };
 
   // Handle removing a selected user
@@ -353,26 +370,30 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
                     value={searchQuery}
                     onChange={handleSearchChange}
                     placeholder="Search for users..."
+                    onFocus={() => setShowDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
                   />
-                  {isSearching && (
-                    <div className="absolute right-3 top-2.5">
-                      <div className="animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>
-                    </div>
-                  )}
                   
-                  {/* Search results dropdown */}
-                  {searchResults.length > 0 && (
+                  {/* Search results dropdown - show when input is focused */}
+                  {showDropdown && (
                     <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                      {searchResults.map(user => (
-                        <div
-                          key={user.id}
-                          className="p-2 hover:bg-gray-100 cursor-pointer"
-                          onClick={() => handleSelectUser(user)}
-                        >
-                          <div className="font-medium">{user.full_name || user.username}</div>
-                          <div className="text-xs text-gray-500">{user.email}</div>
+                      {searchResults.length > 0 ? (
+                        searchResults.map(user => (
+                          <div
+                            key={user.id}
+                            className="p-2 hover:bg-gray-100 cursor-pointer"
+                            onClick={() => handleSelectUser(user)}
+                            onMouseDown={(e) => e.preventDefault()} // Prevent input blur when clicking
+                          >
+                            <div className="font-medium">{user.full_name || user.username}</div>
+                            <div className="text-xs text-gray-500">{user.email}</div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-2 text-center text-gray-500">
+                          {searchQuery ? "No users found matching your search" : "No users available"}
                         </div>
-                      ))}
+                      )}
                     </div>
                   )}
                 </div>

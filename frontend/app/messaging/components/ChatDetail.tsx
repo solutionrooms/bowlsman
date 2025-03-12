@@ -11,7 +11,7 @@ interface ChatDetailProps {
 }
 
 const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
-  const { activeChat, fetchChat, sendMessage, markChatAsRead, chats } = useMessaging();
+  const { activeChat, fetchChat, sendMessage, markChatAsRead, deleteChat, chats } = useMessaging();
   const [messageContent, setMessageContent] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -152,6 +152,18 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
     }
   }, []);
 
+  // Add a new function to handle chat deletion
+  const handleDeleteChat = useCallback(() => {
+    if (!chatId) return;
+    
+    if (window.confirm('Are you sure you want to delete this chat? This action cannot be undone.')) {
+      deleteChat(chatId).catch(error => {
+        console.error('Error deleting chat:', error);
+        setError('Could not delete the chat. Please try again later.');
+      });
+    }
+  }, [chatId, deleteChat]);
+
   if (!chatId) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-50">
@@ -205,12 +217,21 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
             {activeChat.members.length} members • Created {formatTime(activeChat.created_at)}
           </p>
         </div>
-        <button 
-          className="text-blue-600 hover:text-blue-800"
-          onClick={() => setShowMembers(!showMembers)}
-        >
-          {showMembers ? 'Hide Members' : 'Show Members'}
-        </button>
+        <div className="flex space-x-2">
+          <button 
+            className="text-blue-600 hover:text-blue-800"
+            onClick={() => setShowMembers(!showMembers)}
+          >
+            {showMembers ? 'Hide Members' : 'Show Members'}
+          </button>
+          <button 
+            className="text-red-600 hover:text-red-800"
+            onClick={handleDeleteChat}
+            title="Delete chat"
+          >
+            Delete
+          </button>
+        </div>
       </div>
 
       {/* Members list (collapsible) */}
@@ -296,7 +317,7 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
                         {message.sender_details.is_admin && (
                           <span className="ml-1 text-xs bg-blue-100 text-blue-800 px-1 rounded">Admin</span>
                         )}
-                        {message.sender_details.club_role && (
+                        {message.sender_details.club_role && message.sender_details.club_role !== "member" && (
                           <span className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">{message.sender_details.club_role}</span>
                         )}
                       </div>
