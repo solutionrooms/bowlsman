@@ -21,7 +21,7 @@ interface Club {
 
 interface ClubMember {
   id: number;
-  user: number;
+  user: number | { id: number };
   club: number;
   club_name: string;
   is_admin: boolean;
@@ -40,7 +40,7 @@ interface ClubMember {
 
 interface AddMemberResponse {
   id: number;
-  user: number;
+  user: number | { id: number };
   club: number;
   club_name: string;
   is_admin: boolean;
@@ -149,7 +149,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
             return {
               ...member,
               user_details: {
-                id: member.user,
+                id: typeof member.user === 'number' ? member.user : member.user.id,
                 username: username,
                 display_name: displayName
               }
@@ -192,7 +192,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         });
         
         console.log('Club members (mapped and sorted):', sortedMembers);
-        setMembers(sortedMembers);
+        setMembers(sortedMembers as ClubMember[]);
         
         // Fetch all users that can be added to the club (non-members)
         const usersResponse = await api.get<User[]>('/users/', {
@@ -341,7 +341,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return aName.localeCompare(bName);
       });
       
-      setMembers(sortedMembers);
+      setMembers(sortedMembers as ClubMember[]);
       
       // Also refresh the list of available users (non-members)
       const usersResponse = await api.get<User[]>('/users/', {

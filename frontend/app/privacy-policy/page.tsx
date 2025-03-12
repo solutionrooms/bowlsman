@@ -7,7 +7,7 @@ import Navigation from '../components/Navigation';
 declare namespace JSX {
   interface IntrinsicElements {
     ul: React.DetailedHTMLProps<React.HTMLAttributes<HTMLUListElement>, HTMLUListElement>;
-    li: React.DetailedHTMLProps<React.LIAttributes<HTMLLIElement>, HTMLLIElement>;
+    li: React.DetailedHTMLProps<React.HTMLAttributes<HTMLLIElement>, HTMLLIElement>;
     h2: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
     br: React.DetailedHTMLProps<React.HTMLAttributes<HTMLBRElement>, HTMLBRElement>;
   }

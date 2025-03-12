@@ -11,6 +11,12 @@ interface User {
   last_name?: string;
 }
 
+interface Club {
+  id: number;
+  name: string;
+  is_admin: boolean;
+}
+
 interface ComposeMessageProps {
   onSend: () => void;
   onCancel: () => void;
@@ -66,7 +72,7 @@ export default function ComposeMessage({ onSend, onCancel, clubId }: ComposeMess
       if (!isMounted) return;
       
       const userClubs = response.data.clubs || [];
-      const currentClub = userClubs.find(club => club.id === clubId);
+      const currentClub = userClubs.find((club: Club) => club.id === clubId);
       
       if (currentClub && isMounted) {
         setIsAdmin(currentClub.is_admin || response.data.is_staff);
@@ -106,7 +112,7 @@ export default function ComposeMessage({ onSend, onCancel, clubId }: ComposeMess
       onSend();
     } catch (err) {
       console.error('Error sending message:', err);
-      const errorData = err.response?.data;
+      const errorData = (err as any).response?.data;
       if (errorData) {
         console.error('Error details:', errorData);
         if (typeof errorData === 'object') {

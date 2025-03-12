@@ -19,6 +19,25 @@ class RequestLoggingMiddleware:
         path = request.path
         method = request.method
         
+        # Pre-process and cache the request body to avoid reading it multiple times
+        request_body_str = None
+        request_body_data = None
+        content_type = request.META.get('CONTENT_TYPE', '')
+        
+        if method in ['POST', 'PUT', 'PATCH'] and hasattr(request, 'body'):
+            try:
+                # Cache the body as string
+                request_body_str = request.body.decode('utf-8')
+                
+                # Try to parse JSON if content type is application/json
+                if 'application/json' in content_type:
+                    try:
+                        request_body_data = json.loads(request_body_str)
+                    except json.JSONDecodeError:
+                        request_body_data = {'error': 'Invalid JSON data'}
+            except Exception as e:
+                logger.error(f"Error reading request body: {str(e)}")
+        
         # Process the request and get response
         response = self.get_response(request)
         
@@ -28,17 +47,13 @@ class RequestLoggingMiddleware:
         # Log API calls to database if path starts with /api/
         if path.startswith('/api/'):
             try:
-                # Prepare request body
-                request_body = None
-                if method in ['POST', 'PUT', 'PATCH'] and hasattr(request, 'body'):
-                    content_type = request.META.get('CONTENT_TYPE', '')
-                    if 'application/json' in content_type:
-                        try:
-                            request_body = json.loads(request.body)
-                        except json.JSONDecodeError:
-                            request_body = {'error': 'Invalid JSON data'}
+                # Prepare request body for database
+                db_request_body = None
+                if method in ['POST', 'PUT', 'PATCH']:
+                    if 'application/json' in content_type and request_body_data:
+                        db_request_body = request_body_data
                     elif 'multipart/form-data' in content_type:
-                        request_body = {'files': [f.name for f in request.FILES.values()]} if request.FILES else None
+                        db_request_body = {'files': [f.name for f in request.FILES.values()]} if request.FILES else None
                 
                 # Create API log entry
                 ApiLog.objects.create(
@@ -46,7 +61,7 @@ class RequestLoggingMiddleware:
                     method=method,
                     path=path,
                     query_params=dict(request.GET.items()) if request.GET else None,
-                    request_body=request_body,
+                    request_body=db_request_body,
                     status_code=response.status_code,
                     response_time=duration,
                     ip_address=request.META.get('REMOTE_ADDR'),
@@ -56,22 +71,15 @@ class RequestLoggingMiddleware:
                 logger.error(f"Failed to create API log entry: {str(e)}")
         
         # Continue with existing logging
-        if method in ['POST', 'PUT', 'PATCH'] and hasattr(request, 'body'):
-            content_type = request.META.get('CONTENT_TYPE', '')
+        if method in ['POST', 'PUT', 'PATCH']:
             if 'multipart/form-data' in content_type:
                 if hasattr(request, 'FILES') and request.FILES:
                     file_info = ", ".join([f"{name}: {f.name} ({f.size} bytes)" for name, f in request.FILES.items()])
                     logger.info(f"API Request: {method} {path} - Multipart form with files: {file_info}")
                 else:
                     logger.info(f"API Request: {method} {path} - Multipart form data")
-            elif 'application/json' in content_type:
-                try:
-                    body = json.loads(request.body)
-                    logger.info(f"API Request: {method} {path} - Body: {json.dumps(body)}")
-                except json.JSONDecodeError:
-                    logger.info(f"API Request: {method} {path} - Body: (invalid JSON data)")
-                except Exception as e:
-                    logger.info(f"API Request: {method} {path} - Error parsing body: {str(e)}")
+            elif 'application/json' in content_type and request_body_data:
+                logger.info(f"API Request: {method} {path} - Body: {json.dumps(request_body_data)}")
             else:
                 logger.info(f"API Request: {method} {path} - Body: (non-JSON data)")
         else:
