@@ -122,7 +122,10 @@ export default function CreateTeamPage() {
   const fetchClubMembers = async (clubId: number) => {
     try {
       // Fetch club members
-      const membersResponse = await api.get<ClubUserResponse[]>(`club-users?club_id=${clubId}`);
+      const membersResponse = await api.get<ClubUserResponse[]>(
+        `/clubs/${clubId}/members`,
+        {}
+      );
       
       // Extract user details and add search_name for filtering
       const members = membersResponse.data.map(member => {

@@ -115,7 +115,7 @@ export default function Profile() {
     try {
       const token = localStorage.getItem('token');
       // Remove any api/ prefix as the axios interceptor adds it automatically
-      const endpoint = 'club-users/set_current_club/';
+      const endpoint = '/club-users/set_current_club/';
       
       const response = await api.put<{message: string, club: Club}>(
         endpoint,

@@ -90,15 +90,18 @@ export default function LeagueAdminPage() {
 
   const fetchClubMembers = async (clubId: number) => {
     try {
-      const response = await api.get<{user: User, is_admin: boolean}[]>(`club-users?club_id=${clubId}`);
+      const response = await api.get<{user: User, is_admin: boolean}[]>(
+        `/clubs/${clubId}/members`,
+        {}
+      );
       setClubMembers(response.data.map(cu => ({
         id: cu.user.id,
         user: cu.user,
         is_admin: cu.is_admin
       })));
-    } catch (err: any) {
-      console.error('Error fetching club members:', err);
-      setError('Failed to load club members: ' + (err.response?.data?.error || err.message));
+    } catch (error) {
+      console.error('Error fetching club members:', error);
+      setError('Failed to fetch club members. Please try again.');
     }
   };
 
@@ -107,7 +110,7 @@ export default function LeagueAdminPage() {
       setLoading(true);
       
       // Update current club in backend and localStorage
-      await api.put('club-users/set_current_club', { club_id: clubId });
+      await api.put('/club-users/set_current_club', { club_id: clubId });
       
       // Find and set the current club in state
       const selectedClub = userClubs.find(club => club.id === clubId);

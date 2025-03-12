@@ -119,7 +119,7 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
   // Memoize the send message handler
   const handleSendMessage = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatId || (!messageContent.trim() && !selectedImage)) return;
+    if (!chatId || !messageContent.trim()) return;
 
     // Show some feedback that we're sending
     console.log('Sending message:', messageContent, selectedImage);
@@ -399,7 +399,7 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
           />
           <button
             type="submit"
-            disabled={!messageContent.trim() && !selectedImage}
+            disabled={!messageContent.trim()}
             className="bg-blue-600 text-white px-4 py-2 rounded-r-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300"
           >
             Send

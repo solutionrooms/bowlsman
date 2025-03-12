@@ -51,7 +51,6 @@ instance.interceptors.request.use((config) => {
   
   if (config.url) {
     // Remove any leading slashes
-    const originalUrl = config.url;
     config.url = config.url.replace(/^\/+/, '');
     
     // Ensure api prefix without duplication
@@ -59,20 +58,25 @@ instance.interceptors.request.use((config) => {
       config.url = `api/${config.url}`;
     }
     
-    // Ensure trailing slash for Django, but be careful not to add it to query strings
-    // Fix the issue with trailing slashes in query parameters
-    if (!config.url.endsWith('/') && !config.url.includes('?')) {
-      config.url = `${config.url}/`;
-    } else if (config.url.includes('?')) {
-      // For URLs with query parameters, ensure the path part has a trailing slash
+    // Fix URLs with query parameters
+    if (config.url.includes('?')) {
+      // Split the URL into path and query parts
       const [path, query] = config.url.split('?', 2);
-      if (!path.endsWith('/')) {
-        config.url = `${path}/?${query}`;
-      }
+      
+      // Ensure the path has a trailing slash
+      const pathWithSlash = path.endsWith('/') ? path : `${path}/`;
+      
+      // Reconstruct the URL properly
+      config.url = `${pathWithSlash}?${query}`;
+    } 
+    // URLs without query parameters
+    else if (!config.url.endsWith('/')) {
+      config.url = `${config.url}/`;
     }
     
     // Log all API requests to console
     console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    console.log(`Full URL: ${config.baseURL}/${config.url}`);
   }
 
   return config;

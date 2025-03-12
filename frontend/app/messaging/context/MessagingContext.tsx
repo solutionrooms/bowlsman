@@ -345,8 +345,8 @@ export const MessagingProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, [findExistingChat]);
 
   const sendMessage = useCallback(async (chatId: number, content: string, image?: File): Promise<ChatMessage> => {
-    if (!chatId || (!content.trim() && !image)) {
-      throw new Error('Chat ID and either content or image are required');
+    if (!chatId || !content.trim()) {
+      throw new Error('Chat ID and content are required');
     }
     
     try {

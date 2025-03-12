@@ -125,7 +125,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         setClub(clubResponse.data);
         
         // Fetch club members
-        const membersResponse = await api.get<ClubMember[]>(`/club-users/?club=${clubId}`, {
+        const membersResponse = await api.get<ClubMember[]>(`/clubs/${clubId}/members`, {
           headers: { Authorization: `Token ${token}` }
         });
         
@@ -280,7 +280,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
 
       // Fetch updated club members
       const response = await api.get<ClubMember[]>(
-        `/club-users/?club=${clubId}`,
+        `/clubs/${clubId}/members`,
         { headers: { Authorization: `Token ${token}` } }
       );
 

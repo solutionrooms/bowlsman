@@ -122,7 +122,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
       // Safe localStorage check
       if (typeof window === 'undefined') return;
       
-      const endpoint = 'club-users/set_current_club/';
+      const endpoint = '/club-users/set_current_club/';
       
       const response = await api.put<{message: string, club: Club}>(
         endpoint,

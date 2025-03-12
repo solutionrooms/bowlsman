@@ -71,6 +71,7 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(false);
 
   // Fetch data only when the modal is opened
   useEffect(() => {
@@ -85,52 +86,54 @@ const CreateChatModal: React.FC<CreateChatModalProps> = ({
     setSearchQuery('');
     setSearchResults([]);
     
-    // Fetch club members
-    api.get<User[]>(`/api/club-members/${clubId}/`)
-      .then(response => {
-        // Fetch club roles and admin status for each user
-        api.get<any[]>(`/api/club-users/?club=${clubId}`)
-          .then(clubUsersResponse => {
-            const clubUsers = clubUsersResponse.data as any[];
+    // Define an async function inside useEffect
+    const fetchData = async () => {
+      // Fetch club members
+      setLoadingMembers(true);
+      try {
+        const response = await Promise.all([
+          api.get<any[]>(`/clubs/${clubId}/members`, {}),
+          api.get(`/users/me/`)
+        ]);
+        
+        const clubUsers = response[0].data as any[];
+        
+        // Enhance user data with club_role and is_admin
+        const enhancedUsers = users.map(user => {
+          // Try different ways to match the user
+          const clubUser = clubUsers.find(cu => {
+            // Check if user IDs match directly
+            if (cu.user === user.id) return true;
             
-            // Enhance user data with club_role and is_admin
-            const enhancedUsers = response.data.map(user => {
-              // Try different ways to match the user
-              const clubUser = clubUsers.find(cu => {
-                // Check if user IDs match directly
-                if (cu.user === user.id) return true;
-                
-                // Check if user is an object with an id property
-                if (typeof cu.user === 'object' && cu.user !== null && cu.user.id === user.id) return true;
-                
-                // Check if user_id exists and matches
-                if (cu.user_id === user.id) return true;
-                
-                return false;
-              });
-              
-              return {
-                ...user,
-                club_role: clubUser ? clubUser.club_role : '',
-                is_admin: clubUser ? Boolean(clubUser.is_admin) : false,
-                full_name: `${user.first_name} ${user.last_name}`.trim() || user.username
-              };
-            });
+            // Check if user is an object with an id property
+            if (typeof cu.user === 'object' && cu.user !== null && cu.user.id === user.id) return true;
             
-            setUsers(enhancedUsers);
-            // Initially show all users in search results
-            setSearchResults(enhancedUsers);
-          })
-          .catch(error => {
-            console.error('Error fetching club user details:', error);
-            setUsers(response.data);
-            // Initially show all users in search results
-            setSearchResults(response.data);
+            // Check if user_id exists and matches
+            if (cu.user_id === user.id) return true;
+            
+            return false;
           });
-      })
-      .catch(error => {
-        console.error('Error fetching club members:', error);
-      });
+          
+          return {
+            ...user,
+            club_role: clubUser ? clubUser.club_role : '',
+            is_admin: clubUser ? Boolean(clubUser.is_admin) : false,
+            full_name: `${user.first_name} ${user.last_name}`.trim() || user.username
+          };
+        });
+        
+        setUsers(enhancedUsers);
+        // Initially show all users in search results
+        setSearchResults(enhancedUsers);
+      } catch (error) {
+        console.error('Error fetching club user details:', error);
+        setUsers(users);
+        // Initially show all users in search results
+        setSearchResults(users);
+      }
+    };
+
+    fetchData();
 
     // Fetch competitions
     api.get<Competition[]>(`/api/competitions/?club_id=${clubId}`)

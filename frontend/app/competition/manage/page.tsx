@@ -570,7 +570,7 @@ export default function ManageCompetitions() {
                         if (selected) {
                           try {
                             const token = localStorage.getItem('token');
-                            const endpoint = 'club-users/set_current_club/';
+                            const endpoint = '/club-users/set_current_club/';
                             
                             await api.put(
                               endpoint,

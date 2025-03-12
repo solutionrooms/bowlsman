@@ -103,7 +103,7 @@ export default function Home() {
           }
           
           // Fetch club members - using the exact same format as the club detail page
-          const membersResponse = await api.get<ClubMember[]>(`/club-users/?club=${response.data.current_club.id}`, {
+          const membersResponse = await api.get<ClubMember[]>(`/clubs/${response.data.current_club.id}/members`, {
             headers: { Authorization: `Token ${token}` }
           });
           console.log('Club members:', membersResponse.data);

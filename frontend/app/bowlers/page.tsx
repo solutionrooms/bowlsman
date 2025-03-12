@@ -76,8 +76,8 @@ export default function Bowlers() {
             headers: { Authorization: `Token ${token}` }
           });
           
-          // Fetch club user details to get roles and admin status
-          const clubUsersResponse = await api.get<any[]>(`/club-users/?club=${clubId}`, {
+          // Fetch club users
+          const clubUsersResponse = await api.get<any[]>(`/clubs/${clubId}/members`, {
             headers: { Authorization: `Token ${token}` }
           });
           

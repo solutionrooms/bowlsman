@@ -95,7 +95,7 @@ export default function ScoringSelectionPage() {
       setLoading(true);
       
       // Update current club in backend and localStorage
-      await api.put('club-users/set_current_club', { club_id: clubId });
+      await api.put('/club-users/set_current_club', { club_id: clubId });
       
       // Reload competitions for the selected club
       const compsResponse = await api.get<Competition[]>(`competitions?club_id=${clubId}`);
