@@ -107,7 +107,7 @@ export default function Bowlers() {
           
           console.log('Enhanced club members:', clubMembers);
           setBowlers(clubMembers);
-          setFilteredBowlers(clubMembers);
+          setFilteredBowlers(sortBowlers(clubMembers));
           setError(null);
         } else {
           setBowlers([]);
@@ -221,7 +221,7 @@ export default function Bowlers() {
 
   useEffect(() => {
     if (searchTerm.trim() === '') {
-      setFilteredBowlers(bowlers);
+      setFilteredBowlers(sortBowlers(bowlers));
     } else {
       const lowercasedSearch = searchTerm.toLowerCase();
       const filtered = bowlers.filter(bowler => 
@@ -229,9 +229,44 @@ export default function Bowlers() {
         bowler.first_name.toLowerCase().includes(lowercasedSearch) ||
         bowler.last_name.toLowerCase().includes(lowercasedSearch)
       );
-      setFilteredBowlers(filtered);
+      setFilteredBowlers(sortBowlers(filtered));
     }
   }, [searchTerm, bowlers]);
+
+  // Sort bowlers according to criteria:
+  // 1. Any bowlers with club roles (president etc) come first
+  // 2. Any admins come second
+  // 3. All standard bowlers are then listed alphabetically
+  const sortBowlers = (bowlersList: Bowler[]): Bowler[] => {
+    return [...bowlersList].sort((a, b) => {
+      // If one has a club role and the other doesn't, the one with role comes first
+      if (a.club_role && !b.club_role) return -1;
+      if (!a.club_role && b.club_role) return 1;
+      
+      // If both have club roles or neither have club roles, check admin status
+      if (a.club_role && b.club_role) {
+        // If admin status differs, sort by that next
+        if (a.is_admin && !b.is_admin) return -1;
+        if (!a.is_admin && b.is_admin) return 1;
+        
+        // Both have roles and same admin status, sort alphabetically
+        return (a.first_name + ' ' + a.last_name).localeCompare(b.first_name + ' ' + b.last_name);
+      }
+      
+      // If neither has club role, check admin status
+      if (!a.club_role && !b.club_role) {
+        // If admin status differs, sort by that
+        if (a.is_admin && !b.is_admin) return -1;
+        if (!a.is_admin && b.is_admin) return 1;
+        
+        // Both are standard bowlers, sort alphabetically
+        return (a.first_name + ' ' + a.last_name).localeCompare(b.first_name + ' ' + b.last_name);
+      }
+      
+      // Fallback alphabetic sort (shouldn't reach here due to above conditions)
+      return (a.first_name + ' ' + a.last_name).localeCompare(b.first_name + ' ' + b.last_name);
+    });
+  };
 
   const handleLogout = () => {
     if (mounted) {
