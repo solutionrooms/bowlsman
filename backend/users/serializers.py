@@ -81,6 +81,7 @@ class UserSerializer(serializers.ModelSerializer):
                 'id': club_user.club.id,
                 'name': club_user.club.name,
                 'is_admin': club_user.is_admin,
+                'club_role': club_user.club_role,
                 'last_login_at': club_user.last_login_at
             }
             for club_user in club_users

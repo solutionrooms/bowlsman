@@ -71,41 +71,27 @@ export default function Bowlers() {
           setCurrentClub(userResponse.data.current_club);
           const clubId = userResponse.data.current_club.id;
           
-          // Then fetch club members
-          const membersResponse = await api.get<any[]>(`/users/?club_id=${clubId}`, {
+          // Fetch club members with role information
+          const clubMembersResponse = await api.get<any[]>(`/clubs/${clubId}/members/`, {
             headers: { Authorization: `Token ${token}` }
           });
           
-          // Fetch club users
-          const clubUsersResponse = await api.get<any[]>(`/clubs/${clubId}/members`, {
-            headers: { Authorization: `Token ${token}` }
-          });
-          
-          const clubUsers = clubUsersResponse.data as any[];
-          console.log('Club users data:', clubUsers);
-          
-          const clubMembers = membersResponse.data.map((user: any) => {
-            // Find the corresponding club user data
-            const clubUser = clubUsers.find((cu: any) => {
-              // Try different ways to match the user
-              if (cu.user === user.id) return true;
-              if (typeof cu.user === 'object' && cu.user !== null && cu.user.id === user.id) return true;
-              if (cu.user_id === user.id) return true;
-              return false;
-            });
+          const clubMembers = clubMembersResponse.data.map((member: any) => {
+            // Extract club role from the clubs array for the current club
+            const currentClubMembership = member.clubs?.find((club: any) => club.id === clubId);
             
             return {
-              id: user.id,
-              username: user.username,
-              first_name: user.first_name,
-              last_name: user.last_name,
-              email: user.email,
-              is_admin: clubUser ? Boolean(clubUser.is_admin) : false,
-              club_role: clubUser ? clubUser.club_role : ''
+              id: member.id, // The user's ID is directly on the member object
+              username: member.username,
+              first_name: member.first_name,
+              last_name: member.last_name,
+              email: member.email,
+              is_admin: currentClubMembership?.is_admin || false,
+              club_role: currentClubMembership?.club_role || ''
             };
           });
           
-          console.log('Enhanced club members:', clubMembers);
+          console.log('Club members data:', clubMembers);
           setBowlers(clubMembers);
           setFilteredBowlers(sortBowlers(clubMembers));
           setError(null);

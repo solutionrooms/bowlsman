@@ -255,6 +255,14 @@ class ChatViewSet(viewsets.ModelViewSet):
     serializer_class = ChatSerializer
     permission_classes = [permissions.IsAuthenticated]
     
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # Make sure the context includes club_id
+        club_id = self.request.query_params.get('club_id') or self.request.data.get('club_id') or self.request.session.get('current_club_id')
+        if club_id:
+            context['club_id'] = club_id
+        return context
+    
     def get_queryset(self):
         user = self.request.user
         club_id = self.request.query_params.get('club_id') or self.request.session.get('current_club_id')
@@ -542,6 +550,14 @@ class ChatViewSet(viewsets.ModelViewSet):
 class ChatMessageViewSet(viewsets.ModelViewSet):
     serializer_class = ChatMessageSerializer
     permission_classes = [permissions.IsAuthenticated]
+    
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # Make sure the context includes club_id
+        club_id = self.request.query_params.get('club_id') or self.request.data.get('club_id') or self.request.session.get('current_club_id')
+        if club_id:
+            context['club_id'] = club_id
+        return context
     
     def get_queryset(self):
         user = self.request.user

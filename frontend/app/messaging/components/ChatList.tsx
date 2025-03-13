@@ -28,6 +28,12 @@ interface ChatItem {
     sender: string;
     created_at: string;
   } | null;
+  members?: Array<{
+    user_details: {
+      club_role?: string;
+      is_admin?: boolean;
+    }
+  }>;
 }
 
 const ChatList: React.FC<ChatListProps> = ({ onSelectChat, selectedChatId }) => {
@@ -136,6 +142,17 @@ const ChatList: React.FC<ChatListProps> = ({ onSelectChat, selectedChatId }) => 
                   <div className="flex items-center">
                     <span className="text-xl mr-2">{getChatTypeIcon(chat.chat_type)}</span>
                     <span className="text-sm font-medium text-gray-900">{chat.display_name}</span>
+                    
+                    {/* Add club role badges for direct chats */}
+                    {chat.chat_type === 'direct' && chat.members && chat.members.length === 2 && 
+                      chat.members.map(member => 
+                        member.user_details.club_role && (
+                          <span key={member.user_details.club_role} className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">
+                            {member.user_details.club_role}
+                          </span>
+                        )
+                      )
+                    }
                   </div>
                   <div className="flex items-center">
                     <span className="text-xs text-gray-500 mr-2">

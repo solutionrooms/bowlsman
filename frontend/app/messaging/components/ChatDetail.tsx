@@ -210,9 +210,21 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
       {/* Chat header */}
       <div className="bg-white border-b border-gray-200 p-4 flex justify-between items-center">
         <div>
-          <h2 className="text-xl font-semibold">
-            {activeChat.display_name}
-          </h2>
+          <div className="flex items-center">
+            <h2 className="text-xl font-semibold">
+              {activeChat.display_name}
+            </h2>
+            {/* Display club role badge for direct chats */}
+            {activeChat.chat_type === 'direct' && activeChat.members && activeChat.members.length === 2 && 
+              activeChat.members.map(member => 
+                member.user_details.club_role && (
+                  <span key={member.id} className="ml-2 text-sm bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                    {member.user_details.club_role}
+                  </span>
+                )
+              )
+            }
+          </div>
           <p className="text-sm text-gray-500">
             {activeChat.members.length} members • Created {formatTime(activeChat.created_at)}
           </p>
@@ -260,6 +272,9 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
                 <span>{member.user_details.full_name}</span>
                 {member.is_admin && (
                   <span className="ml-1 text-xs bg-blue-100 text-blue-800 px-1 rounded">Admin</span>
+                )}
+                {member.user_details.club_role && (
+                  <span className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">{member.user_details.club_role}</span>
                 )}
               </div>
             ))}
