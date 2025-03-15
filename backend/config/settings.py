@@ -108,6 +108,13 @@ REST_FRAMEWORK = {
     ],
 }
 
+# Define authentication backends
+# The development backend is added first so it's checked before the default backend
+AUTHENTICATION_BACKENDS = [
+    'users.auth.DevelopmentAuthBackend',  # For development testing with 'pass' password
+    'django.contrib.auth.backends.ModelBackend',  # Default auth backend
+]
+
 SPECTACULAR_SETTINGS = {
     'TITLE': 'User Management API',
     'DESCRIPTION': 'API for managing users',

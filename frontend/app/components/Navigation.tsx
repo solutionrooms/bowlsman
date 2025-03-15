@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import api from '../../src/lib/axios';
 import { useMessaging } from '../messaging/context/MessagingContext';
 
@@ -27,6 +27,7 @@ interface User {
 
 export default function Navigation({ onLogout }: NavigationProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [clubDropdownOpen, setClubDropdownOpen] = useState(false);
@@ -104,7 +105,15 @@ export default function Navigation({ onLogout }: NavigationProps) {
     };
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // Call backend logout endpoint
+      await api.post('/logout/');
+    } catch (error) {
+      console.error('Error during logout API call:', error);
+      // Continue with client-side logout even if API call fails
+    }
+    
     // Safely access localStorage only in browser context
     if (typeof window !== 'undefined') {
       try {
@@ -114,7 +123,12 @@ export default function Navigation({ onLogout }: NavigationProps) {
         // Handle localStorage errors silently
       }
     }
+    
+    // Call the provided onLogout callback
     onLogout();
+    
+    // Always redirect to the login page
+    router.push('/');
   };
 
   const handleClubChange = async (clubId: number) => {

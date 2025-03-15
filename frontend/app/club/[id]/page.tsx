@@ -86,6 +86,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showManageModal, setShowManageModal] = useState(false);
+  const [renderKey, setRenderKey] = useState(Date.now());
   const router = useRouter();
   const clubId = parseInt(params.id);
 
@@ -149,7 +150,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
             return {
               ...member,
               user_details: {
-                id: typeof member.user === 'number' ? member.user : member.user.id,
+                id: member.user ? (typeof member.user === 'number' ? member.user : member.user.id) : member.id || 0,
                 username: username,
                 display_name: displayName
               }
@@ -172,22 +173,22 @@ export default function ClubDetail({ params }: ClubDetailProps) {
           
           // If both have roles, sort by role importance
           if (aHasRole && bHasRole) {
-            const roleOrder = {
+            const roleOrder: Record<string, number> = {
               'President': 1,
               'Vice-President': 2,
               'Treasurer': 3,
               'Secretary': 4
             };
-            const aRoleOrder = roleOrder[a.club_role as keyof typeof roleOrder] || 99;
-            const bRoleOrder = roleOrder[b.club_role as keyof typeof roleOrder] || 99;
+            const aRoleOrder = a.club_role && roleOrder[a.club_role] || 99;
+            const bRoleOrder = b.club_role && roleOrder[b.club_role] || 99;
             if (aRoleOrder !== bRoleOrder) {
               return aRoleOrder - bRoleOrder;
             }
           }
           
           // Finally, sort alphabetically by display name
-          const aName = a.user_details?.display_name || '';
-          const bName = b.user_details?.display_name || '';
+          const aName = a.user_details?.display_name || a.username || '';
+          const bName = b.user_details?.display_name || b.username || '';
           return aName.localeCompare(bName);
         });
         
@@ -203,9 +204,10 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('All users fetched:', usersResponse.data);
         
         // Filter out users who are already members
-        const memberUserIds = new Set(mappedMembers.map((m: ClubMember) => 
-          typeof m.user === 'number' ? m.user : (m.user as any).id
-        ));
+        const memberUserIds = new Set(mappedMembers.map((m: ClubMember) => {
+          if (!m.user) return m.id; // Fallback to member ID if user is undefined
+          return typeof m.user === 'number' ? m.user : (m.user as any).id;
+        }));
         const availableUsers = usersResponse.data.filter((user: User) => !memberUserIds.has(user.id));
         
         console.log('Available users:', availableUsers);
@@ -278,14 +280,28 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return;
       }
 
+      console.log('Refreshing members for club:', clubId);
+
       // Fetch updated club members
       const response = await api.get<ClubMember[]>(
         `/clubs/${clubId}/members`,
         { headers: { Authorization: `Token ${token}` } }
       );
 
+      console.log('Raw members from API:', response.data);
+      
+      // DEBUG: Check a specific member
+      if (response.data.length > 0) {
+        const sampleMember = response.data[0];
+        console.log('Sample member raw data:', sampleMember);
+        console.log('Sample member club_role:', sampleMember.club_role);
+        console.log('Sample member is_admin:', sampleMember.is_admin);
+      }
+
       // Map the response to match our expected format if needed
       const mappedMembers = response.data.map(member => {
+        console.log('Mapping member:', member.id, 'club_role:', member.club_role);
+        
         // Check if user_details is missing and create it from available data
         if (!member.user_details) {
           // Try to extract username, first_name, last_name from the response
@@ -296,10 +312,12 @@ export default function ClubDetail({ params }: ClubDetailProps) {
             ? `${firstName} ${lastName}`.trim() 
             : username;
           
+          console.log('Creating user_details for member:', member.id, 'username:', username);
+          
           return {
             ...member,
             user_details: {
-              id: typeof member.user === 'number' ? member.user : member.user.id,
+              id: member.user ? (typeof member.user === 'number' ? member.user : member.user.id) : member.id || 0,
               username: username,
               display_name: displayName
             }
@@ -307,6 +325,14 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         }
         return member;
       });
+      
+      console.log('Mapped members:', mappedMembers);
+      
+      // Debug: Verify the mapped data has roles
+      if (mappedMembers.length > 0) {
+        const sampleMappedMember = mappedMembers[0];
+        console.log('Sample mapped member:', sampleMappedMember.id, 'club_role:', sampleMappedMember.club_role);
+      }
       
       // Sort members: admins first, then roles, then alphabetically
       const sortedMembers = [...mappedMembers].sort((a, b) => {
@@ -322,26 +348,37 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         
         // If both have roles, sort by role importance
         if (aHasRole && bHasRole) {
-          const roleOrder = {
+          const roleOrder: Record<string, number> = {
             'President': 1,
             'Vice-President': 2,
             'Treasurer': 3,
             'Secretary': 4
           };
-          const aRoleOrder = roleOrder[a.club_role as keyof typeof roleOrder] || 99;
-          const bRoleOrder = roleOrder[b.club_role as keyof typeof roleOrder] || 99;
+          const aRoleOrder = a.club_role && roleOrder[a.club_role] || 99;
+          const bRoleOrder = b.club_role && roleOrder[b.club_role] || 99;
           if (aRoleOrder !== bRoleOrder) {
             return aRoleOrder - bRoleOrder;
           }
         }
         
         // Finally, sort alphabetically by display name
-        const aName = a.user_details?.display_name || '';
-        const bName = b.user_details?.display_name || '';
+        const aName = a.user_details?.display_name || a.username || '';
+        const bName = b.user_details?.display_name || b.username || '';
         return aName.localeCompare(bName);
       });
       
-      setMembers(sortedMembers as ClubMember[]);
+      // Debug: Verify the sorted data has roles
+      if (sortedMembers.length > 0) {
+        const sampleSortedMember = sortedMembers[0];
+        console.log('Sample sorted member:', sampleSortedMember.id, 'club_role:', sampleSortedMember.club_role);
+      }
+      
+      console.log('Sorted members before setState:', sortedMembers);
+      
+      // Set members state with a completely fresh copy
+      const freshSortedMembers = JSON.parse(JSON.stringify(sortedMembers));
+      setMembers(freshSortedMembers);
+      console.log('Members state set with sorted members:', freshSortedMembers);
       
       // Also refresh the list of available users (non-members)
       const usersResponse = await api.get<User[]>('/users/', {
@@ -350,12 +387,21 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       });
       
       // Filter out users who are already members
-      const memberUserIds = new Set(mappedMembers.map((m: ClubMember) => 
-        typeof m.user === 'number' ? m.user : (m.user as any).id
-      ));
+      const memberUserIds = new Set(mappedMembers.map((m: ClubMember) => {
+        if (!m.user) return m.id; // Fallback to member ID if user is undefined
+        return typeof m.user === 'number' ? m.user : (m.user as any).id;
+      }));
       const availableUsers = usersResponse.data.filter((user: User) => !memberUserIds.has(user.id));
       
+      console.log('Available users set:', availableUsers.length);
       setAllUsers(availableUsers);
+      
+      // Force full UI refresh
+      const newRenderKey = Date.now();
+      console.log('Setting new render key:', newRenderKey);
+      setRenderKey(newRenderKey);
+      
+      console.log('refreshMembers completed successfully');
     } catch (error) {
       console.error('Error refreshing members:', error);
     }
@@ -450,12 +496,24 @@ export default function ClubDetail({ params }: ClubDetailProps) {
 
       console.log('Removing member with ID:', memberId, 'Member:', member);
       
-      // Extract the user ID, handling both number and object cases
-      const userId = typeof member.user === 'object' && member.user !== null 
-        ? (member.user as any).id 
-        : member.user;
+      // Extract the user ID, ensuring we have a valid user ID
+      let userId = null;
+      if (typeof member.user === 'object' && member.user !== null) {
+        userId = member.user.id;
+      } else if (typeof member.user === 'number') {
+        userId = member.user;
+      } else if (member.user_details && member.user_details.id) {
+        userId = member.user_details.id;
+      }
       
-      console.log('Using user ID:', userId);
+      console.log('Using user ID for remove_user:', userId);
+      
+      // Check if we have a valid user ID
+      if (!userId) {
+        console.error('Failed to determine user ID from member:', member);
+        alert('Failed to remove member: Cannot determine user ID');
+        return;
+      }
       
       await api.post(
         `/clubs/${clubId}/remove_user/`,
@@ -480,14 +538,25 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       }
 
       console.log('Toggling admin status for member:', member);
-      console.log('Member user ID type:', typeof member.user, 'value:', member.user);
       
-      // Extract the user ID, handling both number and object cases
-      const userId = typeof member.user === 'object' && member.user !== null 
-        ? (member.user as any).id 
-        : member.user;
+      // Extract the user ID, ensuring we have a valid user ID
+      let userId = null;
+      if (typeof member.user === 'object' && member.user !== null) {
+        userId = member.user.id;
+      } else if (typeof member.user === 'number') {
+        userId = member.user;
+      } else if (member.user_details && member.user_details.id) {
+        userId = member.user_details.id;
+      }
       
-      console.log('Using user ID:', userId);
+      console.log('Using user ID for remove_user:', userId);
+      
+      // Check if we have a valid user ID
+      if (!userId) {
+        console.error('Failed to determine user ID from member:', member);
+        alert('Failed to update admin status: Cannot determine user ID');
+        return;
+      }
       
       // If we're removing admin status, check if this is the last admin
       if (member.is_admin) {
@@ -510,9 +579,12 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       );
 
       // Get the username to use
-      const username = typeof member.user === 'object' && member.user !== null && (member.user as any).username
-        ? (member.user as any).username
-        : member.username || `user${userId}`;
+      const username = member.user_details?.username || 
+                       (typeof member.user === 'object' && member.user !== null && (member.user as any).username) || 
+                       member.username || 
+                       `user${userId}`;
+      
+      console.log('Using username for add_user:', username);
       
       // Then add them back with the new admin status
       const response = await api.post(
@@ -526,10 +598,41 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       );
       
       console.log('Add user response:', response.data);
-      console.log('Sent club_role:', member.club_role, 'Received club_role:', (response.data as any).club_role);
+
+      // Optimistically update the UI before refreshing data from server
+      // Find index of the member being updated
+      const memberIndex = members.findIndex(m => m.id === member.id);
+      if (memberIndex !== -1) {
+        // Create a new array to trigger re-render
+        const updatedMembers = [...members];
+        // Update the specific member
+        updatedMembers[memberIndex] = {
+          ...updatedMembers[memberIndex],
+          is_admin: !member.is_admin
+        };
+        console.log('Optimistically updating members with new admin status', updatedMembers[memberIndex]);
+        // Update the state
+        setMembers(updatedMembers);
+        
+        // Force UI refresh right away
+        setRenderKey(Date.now());
+      }
+
+      // Temporarily close the modal if it's open
+      const wasModalOpen = showManageModal;
+      if (wasModalOpen) {
+        setShowManageModal(false);
+      }
 
       // Refresh the member list to ensure we have the latest data
       await refreshMembers();
+      
+      // Re-open the modal if it was open
+      if (wasModalOpen) {
+        setTimeout(() => {
+          setShowManageModal(true);
+        }, 100);
+      }
     } catch (error: any) {
       console.error('Error toggling admin status:', error);
       alert(error.response?.data?.error || 'Failed to update admin status. Please try again.');
@@ -545,7 +648,6 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       }
 
       console.log('Updating club role for member:', member, 'to:', newRole);
-      console.log('Member user ID type:', typeof member.user, 'value:', member.user);
       
       // Check if the role is already assigned to another member
       if (newRole !== '') {
@@ -563,12 +665,24 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         }
       }
       
-      // Extract the user ID, handling both number and object cases
-      const userId = typeof member.user === 'object' && member.user !== null 
-        ? (member.user as any).id 
-        : member.user;
+      // Extract the user ID, ensuring we have a valid user ID
+      let userId = null;
+      if (typeof member.user === 'object' && member.user !== null) {
+        userId = member.user.id;
+      } else if (typeof member.user === 'number') {
+        userId = member.user;
+      } else if (member.user_details && member.user_details.id) {
+        userId = member.user_details.id;
+      }
       
-      console.log('Using user ID:', userId);
+      console.log('Using user ID for remove_user:', userId);
+      
+      // Check if we have a valid user ID
+      if (!userId) {
+        console.error('Failed to determine user ID from member:', member);
+        alert('Failed to update club role: Cannot determine user ID');
+        return;
+      }
       
       // Check if this is an admin user
       if (member.is_admin) {
@@ -591,9 +705,12 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       );
 
       // Get the username to use
-      const username = typeof member.user === 'object' && member.user !== null && (member.user as any).username
-        ? (member.user as any).username
-        : member.username || `user${userId}`;
+      const username = member.user_details?.username || 
+                       (typeof member.user === 'object' && member.user !== null && (member.user as any).username) || 
+                       member.username || 
+                       `user${userId}`;
+      
+      console.log('Using username for add_user:', username);
       
       // Then add them back with the new role
       const response = await api.post(
@@ -607,10 +724,41 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       );
       
       console.log('Add user response:', response.data);
-      console.log('Sent club_role:', newRole, 'Received club_role:', (response.data as any).club_role);
+
+      // Optimistically update the UI before refreshing data from server
+      // Find index of the member being updated
+      const memberIndex = members.findIndex(m => m.id === member.id);
+      if (memberIndex !== -1) {
+        // Create a new array to trigger re-render
+        const updatedMembers = [...members];
+        // Update the specific member
+        updatedMembers[memberIndex] = {
+          ...updatedMembers[memberIndex],
+          club_role: newRole
+        };
+        console.log('Optimistically updating members with new role', updatedMembers[memberIndex]);
+        // Update the state
+        setMembers(updatedMembers);
+        
+        // Force UI refresh right away
+        setRenderKey(Date.now());
+      }
+
+      // Temporarily close the modal if it's open
+      const wasModalOpen = showManageModal;
+      if (wasModalOpen) {
+        setShowManageModal(false);
+      }
 
       // Refresh the member list to ensure we have the latest data
       await refreshMembers();
+      
+      // Re-open the modal if it was open
+      if (wasModalOpen) {
+        setTimeout(() => {
+          setShowManageModal(true);
+        }, 100);
+      }
     } catch (error: any) {
       console.error('Error updating club role:', error);
       alert(error.response?.data?.error || 'Failed to update club role. Please try again.');
@@ -671,9 +819,9 @@ export default function ClubDetail({ params }: ClubDetailProps) {
             </button>
           </div>
           
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 space-y-4" key={`main-member-list-${renderKey}`}>
             {members.map(member => (
-              <div key={member.id} className="flex items-center justify-between bg-white p-4 rounded-lg border">
+              <div key={`main-${member.id}-${renderKey}`} className="flex items-center justify-between bg-white p-4 rounded-lg border">
                 <div>
                   <span className="font-medium">
                     {member.user_details?.display_name || `User ${member.user}`}
@@ -692,6 +840,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
                 <div className="space-x-2">
                   {isUserStaff && (
                     <select
+                      key={`select-${member.id}-${renderKey}`}
                       value={member.club_role || ""}
                       onChange={(e) => handleUpdateClubRole(member, e.target.value)}
                       className="px-2 py-1 text-sm border-gray-300 rounded shadow-sm focus:border-blue-500 focus:ring-blue-500"
@@ -816,10 +965,10 @@ export default function ClubDetail({ params }: ClubDetailProps) {
 
             <div>
               <h3 className="text-lg font-semibold mb-4">Current Members</h3>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
+              <div className="space-y-2 max-h-60 overflow-y-auto" key={`member-list-${renderKey}`}>
                 {members.length > 0 ? (
                   members.map(member => (
-                    <div key={member.id} className="flex items-center justify-between bg-white p-3 rounded-lg border">
+                    <div key={`${member.id}-${renderKey}`} className="flex items-center justify-between bg-white p-3 rounded-lg border">
                       <div>
                         <span className="font-medium">
                           {member.user_details?.display_name || `User ${member.user}`}
@@ -837,7 +986,8 @@ export default function ClubDetail({ params }: ClubDetailProps) {
                       </div>
                       <div className="space-x-2 flex items-center">
                         <select
-                          value={member.club_role}
+                          key={`select-${member.id}-${renderKey}`}
+                          value={member.club_role || ""}
                           onChange={(e) => handleUpdateClubRole(member, e.target.value)}
                           className="text-xs border-gray-300 rounded shadow-sm focus:border-blue-500 focus:ring-blue-500"
                         >
