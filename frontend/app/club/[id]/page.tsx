@@ -125,42 +125,71 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('Club details:', clubResponse.data);
         setClub(clubResponse.data);
         
-        // Fetch club members
-        const membersResponse = await api.get<ClubMember[]>(`/clubs/${clubId}/members`, {
+        // Get user's clubs with roles and admin status from the user response we already have
+        const userClubs = userResponse.data.clubs || [];
+        
+        console.log('Current user data:', userResponse.data);
+        console.log('User clubs from API:', userClubs);
+        
+        // Create a map of user IDs to their club user info (role, admin status)
+        // We'll use this to supplement member data
+        const clubUserMap = {};
+        
+        console.log('Club user map:', clubUserMap);
+        
+        // Fetch club members with role information - use trailing slash like in bowlers page
+        const membersResponse = await api.get<any[]>(`/clubs/${clubId}/members/`, {
           headers: { Authorization: `Token ${token}` }
         });
         
         console.log('Club members (raw):', membersResponse.data);
         console.log('First member raw data:', membersResponse.data[0]);
         
-        // Map the response to match our expected format if needed
-        const mappedMembers = membersResponse.data.map(member => {
-          // Check if user_details is missing and create it from available data
-          if (!member.user_details) {
-            // Try to extract username, first_name, last_name from the response
-            const username = member.username || `user${member.user}`;
-            const firstName = member.first_name || '';
-            const lastName = member.last_name || '';
-            const displayName = firstName || lastName 
-              ? `${firstName} ${lastName}`.trim() 
-              : username;
-              
-            console.log('Creating user_details for member:', member.user, 'displayName:', displayName);
-            
-            return {
-              ...member,
-              user_details: {
-                id: member.user ? (typeof member.user === 'number' ? member.user : member.user.id) : member.id || 0,
-                username: username,
-                display_name: displayName
-              }
-            };
-          }
-          return member;
+        // Process the member data using the same approach as the bowlers page
+        const enrichedMembers = membersResponse.data.map((member: any) => {
+          // Extract club role from the clubs array for the current club
+          const currentClubMembership = member.clubs?.find((club: any) => club.id === clubId);
+          
+          // Create user_details object
+          const user_details = {
+            id: member.id,
+            username: member.username,
+            display_name: member.first_name || member.last_name 
+              ? `${member.first_name} ${member.last_name}`.trim() 
+              : member.username
+          };
+          
+          // Build the member object with club role and admin status
+          const enrichedMember = {
+            id: member.id,
+            user: member.id, // Use the ID directly like in bowlers page
+            username: member.username,
+            first_name: member.first_name,
+            last_name: member.last_name,
+            email: member.email,
+            is_admin: currentClubMembership?.is_admin || false,
+            club_role: currentClubMembership?.club_role || '',
+            user_details
+          };
+          
+          console.log(`Member ${member.id} enriched:`, {
+            is_admin: enrichedMember.is_admin,
+            club_role: enrichedMember.club_role
+          });
+          
+          return enrichedMember;
         });
         
+        console.log('Enriched members:', enrichedMembers);
+        
+        // Debug: Verify the enriched data has roles
+        if (enrichedMembers.length > 0) {
+          const sampleMember = enrichedMembers[0];
+          console.log('Sample enriched member:', sampleMember.id, 'club_role:', sampleMember.club_role, 'is_admin:', sampleMember.is_admin);
+        }
+        
         // Sort members: admins first, then roles, then alphabetically
-        const sortedMembers = [...mappedMembers].sort((a, b) => {
+        const sortedMembers = [...enrichedMembers].sort((a, b) => {
           // Admins come first
           if (a.is_admin && !b.is_admin) return -1;
           if (!a.is_admin && b.is_admin) return 1;
@@ -192,7 +221,12 @@ export default function ClubDetail({ params }: ClubDetailProps) {
           return aName.localeCompare(bName);
         });
         
-        console.log('Club members (mapped and sorted):', sortedMembers);
+        console.log('Club members (mapped, enriched, and sorted):', sortedMembers);
+        
+        // Verify club roles in the initial data
+        console.log('VERIFY INITIAL: Members with roles:', sortedMembers.filter(m => m.club_role).map(m => `${m.user_details?.display_name || m.id}: ${m.club_role}`));
+        console.log('VERIFY INITIAL: Members with admin:', sortedMembers.filter(m => m.is_admin).map(m => `${m.user_details?.display_name || m.id}: admin=${m.is_admin}`));
+        
         setMembers(sortedMembers as ClubMember[]);
         
         // Fetch all users that can be added to the club (non-members)
@@ -204,7 +238,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('All users fetched:', usersResponse.data);
         
         // Filter out users who are already members
-        const memberUserIds = new Set(mappedMembers.map((m: ClubMember) => {
+        const memberUserIds = new Set(enrichedMembers.map((m: ClubMember) => {
           if (!m.user) return m.id; // Fallback to member ID if user is undefined
           return typeof m.user === 'number' ? m.user : (m.user as any).id;
         }));
@@ -282,60 +316,59 @@ export default function ClubDetail({ params }: ClubDetailProps) {
 
       console.log('Refreshing members for club:', clubId);
 
-      // Fetch updated club members
-      const response = await api.get<ClubMember[]>(
-        `/clubs/${clubId}/members`,
+      // Fetch club members with role information - use trailing slash like in bowlers page
+      const response = await api.get<any[]>(
+        `/clubs/${clubId}/members/`,
         { headers: { Authorization: `Token ${token}` } }
       );
 
-      console.log('Raw members from API:', response.data);
+      console.log('Members data from API:', response.data);
       
-      // DEBUG: Check a specific member
-      if (response.data.length > 0) {
-        const sampleMember = response.data[0];
-        console.log('Sample member raw data:', sampleMember);
-        console.log('Sample member club_role:', sampleMember.club_role);
-        console.log('Sample member is_admin:', sampleMember.is_admin);
-      }
-
-      // Map the response to match our expected format if needed
-      const mappedMembers = response.data.map(member => {
-        console.log('Mapping member:', member.id, 'club_role:', member.club_role);
+      // Process the member data using the same approach as the bowlers page
+      const enrichedMembers = response.data.map((member: any) => {
+        // Extract club role from the clubs array for the current club
+        const currentClubMembership = member.clubs?.find((club: any) => club.id === clubId);
         
-        // Check if user_details is missing and create it from available data
-        if (!member.user_details) {
-          // Try to extract username, first_name, last_name from the response
-          const username = member.username || `user${member.user}`;
-          const firstName = member.first_name || '';
-          const lastName = member.last_name || '';
-          const displayName = firstName || lastName 
-            ? `${firstName} ${lastName}`.trim() 
-            : username;
-          
-          console.log('Creating user_details for member:', member.id, 'username:', username);
-          
-          return {
-            ...member,
-            user_details: {
-              id: member.user ? (typeof member.user === 'number' ? member.user : member.user.id) : member.id || 0,
-              username: username,
-              display_name: displayName
-            }
-          };
-        }
-        return member;
+        // Create user_details object
+        const user_details = {
+          id: member.id,
+          username: member.username,
+          display_name: member.first_name || member.last_name 
+            ? `${member.first_name} ${member.last_name}`.trim() 
+            : member.username
+        };
+        
+        // Build the member object with club role and admin status
+        const enrichedMember = {
+          id: member.id,
+          user: member.id, // Use the ID directly like in bowlers page
+          username: member.username,
+          first_name: member.first_name,
+          last_name: member.last_name,
+          email: member.email,
+          is_admin: currentClubMembership?.is_admin || false,
+          club_role: currentClubMembership?.club_role || '',
+          user_details
+        };
+        
+        console.log(`Member ${member.id} refreshed:`, {
+          is_admin: enrichedMember.is_admin,
+          club_role: enrichedMember.club_role
+        });
+        
+        return enrichedMember;
       });
       
-      console.log('Mapped members:', mappedMembers);
+      console.log('Enriched members:', enrichedMembers);
       
-      // Debug: Verify the mapped data has roles
-      if (mappedMembers.length > 0) {
-        const sampleMappedMember = mappedMembers[0];
-        console.log('Sample mapped member:', sampleMappedMember.id, 'club_role:', sampleMappedMember.club_role);
+      // Debug: Verify the enriched data has roles
+      if (enrichedMembers.length > 0) {
+        const sampleMember = enrichedMembers[0];
+        console.log('Sample enriched member:', sampleMember.id, 'club_role:', sampleMember.club_role, 'is_admin:', sampleMember.is_admin);
       }
       
       // Sort members: admins first, then roles, then alphabetically
-      const sortedMembers = [...mappedMembers].sort((a, b) => {
+      const sortedMembers = [...enrichedMembers].sort((a, b) => {
         // Admins come first
         if (a.is_admin && !b.is_admin) return -1;
         if (!a.is_admin && b.is_admin) return 1;
@@ -367,16 +400,15 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         return aName.localeCompare(bName);
       });
       
-      // Debug: Verify the sorted data has roles
-      if (sortedMembers.length > 0) {
-        const sampleSortedMember = sortedMembers[0];
-        console.log('Sample sorted member:', sampleSortedMember.id, 'club_role:', sampleSortedMember.club_role);
-      }
-      
       console.log('Sorted members before setState:', sortedMembers);
       
       // Set members state with a completely fresh copy
       const freshSortedMembers = JSON.parse(JSON.stringify(sortedMembers));
+      
+      // Verify club roles in the final data
+      console.log('VERIFY: Members with roles:', freshSortedMembers.filter(m => m.club_role).map(m => `${m.user_details?.display_name || m.id}: ${m.club_role}`));
+      console.log('VERIFY: Members with admin:', freshSortedMembers.filter(m => m.is_admin).map(m => `${m.user_details?.display_name || m.id}: admin=${m.is_admin}`));
+      
       setMembers(freshSortedMembers);
       console.log('Members state set with sorted members:', freshSortedMembers);
       
@@ -387,7 +419,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       });
       
       // Filter out users who are already members
-      const memberUserIds = new Set(mappedMembers.map((m: ClubMember) => {
+      const memberUserIds = new Set(enrichedMembers.map((m: ClubMember) => {
         if (!m.user) return m.id; // Fallback to member ID if user is undefined
         return typeof m.user === 'number' ? m.user : (m.user as any).id;
       }));
@@ -578,21 +610,19 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         { headers: { Authorization: `Token ${token}` } }
       );
 
-      // Get the username to use
-      const username = member.user_details?.username || 
-                       (typeof member.user === 'object' && member.user !== null && (member.user as any).username) || 
-                       member.username || 
-                       `user${userId}`;
+      // Get the username to use - just use the username directly from the member
+      const username = member.username || member.user_details?.username || `user${userId}`;
       
       console.log('Using username for add_user:', username);
+      console.log('Current club_role:', member.club_role);
       
-      // Then add them back with the new admin status
+      // Then add them back with the new admin status but preserve the club_role
       const response = await api.post(
         `/clubs/${clubId}/add_user/`,
         { 
           username: username,
           is_admin: !member.is_admin,
-          club_role: member.club_role
+          club_role: member.club_role || '' // Ensure club_role is preserved
         },
         { headers: { Authorization: `Token ${token}` } }
       );
@@ -704,20 +734,18 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         { headers: { Authorization: `Token ${token}` } }
       );
 
-      // Get the username to use
-      const username = member.user_details?.username || 
-                       (typeof member.user === 'object' && member.user !== null && (member.user as any).username) || 
-                       member.username || 
-                       `user${userId}`;
+      // Get the username to use - just use the username directly from the member
+      const username = member.username || member.user_details?.username || `user${userId}`;
       
       console.log('Using username for add_user:', username);
+      console.log('Current is_admin status:', member.is_admin);
       
-      // Then add them back with the new role
+      // Then add them back with the new role, preserving admin status
       const response = await api.post(
         `/clubs/${clubId}/add_user/`,
         { 
           username: username,
-          is_admin: member.is_admin,
+          is_admin: !!member.is_admin, // Ensure the admin status is preserved and is a boolean
           club_role: newRole
         },
         { headers: { Authorization: `Token ${token}` } }
@@ -820,22 +848,37 @@ export default function ClubDetail({ params }: ClubDetailProps) {
           </div>
           
           <div className="mt-4 space-y-4" key={`main-member-list-${renderKey}`}>
-            {members.map(member => (
-              <div key={`main-${member.id}-${renderKey}`} className="flex items-center justify-between bg-white p-4 rounded-lg border">
-                <div>
-                  <span className="font-medium">
-                    {member.user_details?.display_name || `User ${member.user}`}
-                  </span>
-                  {member.is_admin && (
-                    <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
-                      Admin
+            {/* Debug info */}
+            {console.log('Rendering member list with:', members.map(m => ({ 
+              id: m.id, 
+              name: m.user_details?.display_name || `User ${m.user}`,
+              is_admin: m.is_admin,
+              club_role: m.club_role
+            })))}
+            
+            {members.map(member => {
+              console.log(`Rendering member ${member.id}:`, { 
+                name: member.user_details?.display_name || `User ${member.user}`,
+                is_admin: member.is_admin, 
+                club_role: member.club_role
+              });
+              return (
+                <div key={`main-${member.id}-${renderKey}`} className="flex items-center justify-between bg-white p-4 rounded-lg border">
+                  <div>
+                    <span className="font-medium">
+                      {member.user_details?.display_name || `User ${member.user}`}
                     </span>
-                  )}
-                  {member.club_role && (
-                    <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
-                      {member.club_role}
-                    </span>
-                  )}
+                    {member.is_admin && (
+                      <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                        Admin
+                      </span>
+                    )}
+                    {member.club_role && (
+                      <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
+                        {member.club_role}
+                      </span>
+                    )}
+                  
                 </div>
                 <div className="space-x-2">
                   {isUserStaff && (
@@ -866,7 +909,8 @@ export default function ClubDetail({ params }: ClubDetailProps) {
                   </button>
                 </div>
               </div>
-            ))}
+            )})}
+            
             {members.length === 0 && (
               <p className="text-gray-500 text-center py-4">No members yet</p>
             )}
