@@ -21,6 +21,7 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [showMembers, setShowMembers] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   
   // Keep track of previous chatId to avoid unnecessary fetches
   const prevChatIdRef = useRef<number | null>(null);
@@ -57,10 +58,21 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
     }
   }, [chatId, fetchChat, markChatAsRead]);
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change or when chat is initially loaded
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeChat?.messages?.length]); // Only depend on the length of messages
+    if (activeChat?.messages?.length) {
+      // Scroll to the bottom when messages load or change
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [activeChat?.messages?.length, activeChat?.id]); 
+
+  // Initial scroll to bottom when chat loads
+  useEffect(() => {
+    if (activeChat?.messages?.length && messagesContainerRef.current) {
+      // Force immediate scroll to bottom on initial load
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  }, [activeChat?.id]);
 
   // Handle image selection
   const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,8 +140,11 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
       .then(() => {
         setMessageContent('');
         clearSelectedImage();
-        // Scroll to bottom after sending
+        // Scroll to bottom after sending to see newest messages
         setTimeout(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+          }
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 100);
       })
@@ -292,83 +307,86 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+      <div className="flex-1 overflow-y-auto p-4 bg-gray-50" ref={messagesContainerRef}>
         {activeChat.messages.length === 0 ? (
           <div className="text-center text-gray-500 my-8">
             <p>No messages yet. Start the conversation!</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {activeChat.messages.map((message) => {
-              const isCurrentUser = message.sender_details.id === activeChat.created_by;
-              // Get full image URL if image_url exists
-              const fullImageUrl = getFullImageUrl(message.image_url);
-              
-              return (
-                <div 
-                  key={message.id} 
-                  className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
-                >
-                  {!isCurrentUser && (
-                    <div className="mr-2 flex-shrink-0">
-                      {message.sender_details.avatar ? (
-                        <img 
-                          src={getFullImageUrl(message.sender_details.avatar) || ''}
-                          alt={message.sender_details.full_name}
-                          className="w-8 h-8 rounded-full object-cover" 
-                        />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
-                          <span className="text-sm font-medium text-gray-600">
-                            {message.sender_details.full_name.substring(0, 1).toUpperCase()}
+          <div className="space-y-4 mb-2">
+            {/* Sort messages by creation date to ensure oldest are at top, newest at bottom */}
+            {[...activeChat.messages]
+              .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+              .map((message) => {
+                const isCurrentUser = message.sender_details.id === activeChat.created_by;
+                // Get full image URL if image_url exists
+                const fullImageUrl = getFullImageUrl(message.image_url);
+                
+                return (
+                  <div 
+                    key={message.id} 
+                    className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'} mb-4`}
+                  >
+                    {!isCurrentUser && (
+                      <div className="mr-2 flex-shrink-0">
+                        {message.sender_details.avatar ? (
+                          <img 
+                            src={getFullImageUrl(message.sender_details.avatar) || ''}
+                            alt={message.sender_details.full_name}
+                            className="w-8 h-8 rounded-full object-cover" 
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
+                            <span className="text-sm font-medium text-gray-600">
+                              {message.sender_details.full_name.substring(0, 1).toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div 
+                      className={`max-w-[75%] rounded-lg px-4 py-2 ${
+                        isCurrentUser 
+                          ? 'bg-blue-600 text-white rounded-br-none' 
+                          : 'bg-white border border-gray-200 rounded-bl-none'
+                      }`}
+                    >
+                      <div className="flex justify-between items-baseline mb-1">
+                        <div className="flex items-center">
+                          <span className={`font-medium text-sm ${isCurrentUser ? 'text-blue-100' : 'text-gray-900'}`}>
+                            {message.sender_details.full_name}
                           </span>
+                          {message.sender_details.is_admin && (
+                            <span className="ml-1 text-xs bg-blue-100 text-blue-800 px-1 rounded">Admin</span>
+                          )}
+                          {message.sender_details.club_role && message.sender_details.club_role !== "member" && (
+                            <span className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">{message.sender_details.club_role}</span>
+                          )}
+                        </div>
+                        <span className={`text-xs ml-2 ${isCurrentUser ? 'text-blue-200' : 'text-gray-500'}`}>
+                          {formatTime(message.created_at)}
+                        </span>
+                      </div>
+                      {message.content && (
+                        <p className={`${isCurrentUser ? 'text-white' : 'text-gray-800'}`}>
+                          {message.content}
+                        </p>
+                      )}
+                      {fullImageUrl && (
+                        <div className="mt-2">
+                          <img 
+                            src={fullImageUrl} 
+                            alt="Message attachment" 
+                            className="max-w-full h-auto rounded cursor-pointer"
+                            style={{ maxHeight: '200px' }}
+                            onClick={() => handleImageClick(fullImageUrl)}
+                          />
                         </div>
                       )}
                     </div>
-                  )}
-                  <div 
-                    className={`max-w-[75%] rounded-lg px-4 py-2 ${
-                      isCurrentUser 
-                        ? 'bg-blue-600 text-white rounded-br-none' 
-                        : 'bg-white border border-gray-200 rounded-bl-none'
-                    }`}
-                  >
-                    <div className="flex justify-between items-baseline mb-1">
-                      <div className="flex items-center">
-                        <span className={`font-medium text-sm ${isCurrentUser ? 'text-blue-100' : 'text-gray-900'}`}>
-                          {message.sender_details.full_name}
-                        </span>
-                        {message.sender_details.is_admin && (
-                          <span className="ml-1 text-xs bg-blue-100 text-blue-800 px-1 rounded">Admin</span>
-                        )}
-                        {message.sender_details.club_role && message.sender_details.club_role !== "member" && (
-                          <span className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">{message.sender_details.club_role}</span>
-                        )}
-                      </div>
-                      <span className={`text-xs ml-2 ${isCurrentUser ? 'text-blue-200' : 'text-gray-500'}`}>
-                        {formatTime(message.created_at)}
-                      </span>
-                    </div>
-                    {message.content && (
-                      <p className={`${isCurrentUser ? 'text-white' : 'text-gray-800'}`}>
-                        {message.content}
-                      </p>
-                    )}
-                    {fullImageUrl && (
-                      <div className="mt-2">
-                        <img 
-                          src={fullImageUrl} 
-                          alt="Message attachment" 
-                          className="max-w-full h-auto rounded cursor-pointer"
-                          style={{ maxHeight: '200px' }}
-                          onClick={() => handleImageClick(fullImageUrl)}
-                        />
-                      </div>
-                    )}
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
             <div ref={messagesEndRef} />
           </div>
         )}
