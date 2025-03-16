@@ -156,13 +156,22 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
   const handleDeleteChat = useCallback(() => {
     if (!chatId) return;
     
-    if (window.confirm('Are you sure you want to delete this chat? This action cannot be undone.')) {
+    // Only show confirmation dialog for actual deletion, not for hiding
+    if (activeChat?.can_delete) {
+      if (window.confirm('Are you sure you want to delete this chat? This action cannot be undone.')) {
+        deleteChat(chatId).catch(error => {
+          console.error('Error deleting chat:', error);
+          setError('Could not delete the chat. Please try again later.');
+        });
+      }
+    } else {
+      // For hiding, proceed without confirmation
       deleteChat(chatId).catch(error => {
-        console.error('Error deleting chat:', error);
-        setError('Could not delete the chat. Please try again later.');
+        console.error('Error hiding chat:', error);
+        setError('Could not hide the chat. Please try again later.');
       });
     }
-  }, [chatId, deleteChat]);
+  }, [chatId, deleteChat, activeChat]);
 
   if (!chatId) {
     return (
@@ -239,9 +248,9 @@ const ChatDetail: React.FC<ChatDetailProps> = ({ chatId }) => {
           <button 
             className="text-red-600 hover:text-red-800"
             onClick={handleDeleteChat}
-            title="Delete chat"
+            title={activeChat.can_delete ? "Delete chat for everyone" : "Hide chat (only for you)"}
           >
-            Delete
+            {activeChat.can_delete ? "Delete" : "Hide Chat"}
           </button>
         </div>
       </div>

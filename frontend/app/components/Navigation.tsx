@@ -38,13 +38,20 @@ export default function Navigation({ onLogout }: NavigationProps) {
   const [allClubs, setAllClubs] = useState<Club[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const { unreadCount } = useMessaging();
+  const { unreadCount, fetchUnreadCount } = useMessaging();
   
   // Refs for dropdown containers
   const userDropdownRef = useRef<HTMLDivElement>(null);
   const clubDropdownRef = useRef<HTMLDivElement>(null);
   const mobileProfileRef = useRef<HTMLDivElement>(null);
   const mobileClubRef = useRef<HTMLDivElement>(null);
+
+  // Fetch unread count when currentClub changes
+  useEffect(() => {
+    if (currentClub?.id) {
+      fetchUnreadCount(currentClub.id);
+    }
+  }, [currentClub, fetchUnreadCount]);
 
   useEffect(() => {
     // Create a flag to prevent multiple calls
