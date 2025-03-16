@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile, ClubApplication
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile, ClubApplication, CompetitionType
 
 class ClubSerializer(serializers.ModelSerializer):
     member_count = serializers.SerializerMethodField()
@@ -168,22 +168,32 @@ class CompetitionUserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Cannot have both user and guest_name")
         return data
 
+class CompetitionTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompetitionType
+        fields = ['id', 'name', 'description']
+
 class CompetitionSerializer(serializers.ModelSerializer):
     creator_name = serializers.CharField(source='creator.username', read_only=True)
     is_full = serializers.BooleanField(read_only=True)
     players = CompetitionUserSerializer(source='competition_users', many=True, read_only=True)
     available_slots = serializers.SerializerMethodField()
     club_name = serializers.CharField(source='club.name', read_only=True)
+    competition_type_name = serializers.CharField(source='competition_type.name', read_only=True)
 
     class Meta:
         model = Competition
         fields = ['id', 'name', 'created_at', 'num_players', 'creator', 'creator_name', 
-                 'rule_set_id', 'is_full', 'players', 'available_slots', 'status', 
+                 'competition_type', 'competition_type_name', 'is_full', 'players', 'available_slots', 'status', 
                  'parallel_matches', 'max_rounds', 'club', 'club_name']
         read_only_fields = ['creator', 'created_at', 'status']
 
     def get_available_slots(self, obj):
         return obj.num_players - obj.competition_users.count()
+        
+    def validate(self, attrs):
+        # We don't need to validate creator field - it will be set in perform_create
+        return attrs
 
 class CompetitionScheduleSerializer(serializers.ModelSerializer):
     score = serializers.SerializerMethodField()

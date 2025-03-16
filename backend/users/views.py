@@ -10,9 +10,9 @@ from django.utils import timezone
 from .serializers import (
     UserSerializer, CompetitionSerializer, CompetitionUserSerializer, 
     CompetitionScheduleSerializer, ClubSerializer, ClubUserSerializer,
-    GameScoreSerializer, ClubApplicationSerializer
+    GameScoreSerializer, ClubApplicationSerializer, CompetitionTypeSerializer
 )
-from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile, PasswordResetToken, ClubApplication
+from .models import Competition, CompetitionUser, CompetitionSchedule, Club, ClubUser, GameScore, UserProfile, PasswordResetToken, ClubApplication, CompetitionType
 import logging
 import random
 from .scheduling import create_round_robin_schedule
@@ -1475,4 +1475,12 @@ class ClubApplicationViewSet(viewsets.ModelViewSet):
         return Response(
             ClubApplicationSerializer(application).data,
             status=status.HTTP_200_OK
-        ) 
+        )
+
+class CompetitionTypeViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = CompetitionType.objects.all()
+    serializer_class = CompetitionTypeSerializer
+    permission_classes = [permissions.AllowAny]  # Allow anyone to read competition types
+
+    def get_queryset(self):
+        return CompetitionType.objects.all() 

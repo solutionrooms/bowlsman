@@ -61,6 +61,13 @@ class ClubUser(models.Model):
     def __str__(self):
         return f"{self.user.username} at {self.club.name}"
 
+class CompetitionType(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
+    
+    def __str__(self):
+        return self.name
+
 class Competition(models.Model):
     STATUS_CHOICES = [
         ('open', 'Open'),
@@ -74,7 +81,7 @@ class Competition(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     num_players = models.IntegerField()
     creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name='competitions')
-    rule_set_id = models.IntegerField()
+    competition_type = models.ForeignKey(CompetitionType, on_delete=models.CASCADE, related_name='competitions')
     parallel_matches = models.IntegerField(default=1)  # Number of matches that can be played simultaneously
     max_rounds = models.IntegerField(default=5)  # Maximum number of rounds to generate
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')

@@ -55,11 +55,12 @@ interface Competition {
   num_players: number;
   creator: number;
   creator_name: string;
-  rule_set_id: number;
+  competition_type: number;
+  competition_type_name: string;
   is_full: boolean;
   players: CompetitionUser[];
   available_slots: number;
-  status: 'open' | 'full' | 'scheduled';
+  status: 'open' | 'full' | 'scheduled' | 'in_progress' | 'completed';
   parallel_matches: number;
   max_rounds: number;
   club: number;
@@ -137,4 +138,10 @@ interface League {
   members_count: number;
   members: LeagueMember[];
   name_mappings: PlayerNameMapping[];
+}
+
+interface CompetitionType {
+  id: number;
+  name: string;
+  description: string;
 }

@@ -9,6 +9,7 @@ router.register(r'clubs', views.ClubViewSet, basename='club')
 router.register(r'club-users', views.ClubUserViewSet, basename='club-user')
 router.register(r'game-scores', views.GameScoreViewSet, basename='game-score')
 router.register(r'club-applications', views.ClubApplicationViewSet, basename='club-application')
+router.register(r'competition-types', views.CompetitionTypeViewSet, basename='competition-type')
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -5,72 +5,84 @@ import { useRouter } from 'next/navigation';
 import Navigation from '../../components/Navigation';
 import PageHeading from '../../components/PageHeading';
 import pageDescriptions from '../../utils/pageDescriptions';
-import api from '../../../src/lib/axios';
+import api from '../../utils/api';
 
-interface User {
-  username: string;
-  email: string;
-  is_staff: boolean;
-}
-
-interface Club {
+// Define types needed for this component
+interface CompetitionType {
   id: number;
   name: string;
+  description: string;
 }
 
 export default function CreateCompetition() {
   const [numPlayers, setNumPlayers] = useState<number>(4);
   const [name, setName] = useState<string>('');
-  const [parallelMatches, setParallelMatches] = useState<number>(1);
-  const [maxRounds, setMaxRounds] = useState<number>(5);
   const [error, setError] = useState<string>('');
   const [user, setUser] = useState<User | null>(null);
+  const [clubs, setClubs] = useState<Club[]>([]);
   const [currentClub, setCurrentClub] = useState<Club | null>(null);
-  const [userClubs, setUserClubs] = useState<Club[]>([]);
-  const [mounted, setMounted] = useState(false);
+  const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>([]);
+  const [selectedCompetitionType, setSelectedCompetitionType] = useState<number>(1);
+  const [parallelMatches, setParallelMatches] = useState<number>(1);
+  const [maxRounds, setMaxRounds] = useState<number>(5);
   const router = useRouter();
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/');
-      return;
-    }
-
     const fetchUserData = async () => {
       try {
-        const response = await api.get<User & { clubs: Club[] }>('/users/me/');
-        setUser(response.data);
-        
-        // Get user's current club from localStorage
-        const storedCurrentClub = localStorage.getItem('currentClub');
-        if (storedCurrentClub) {
-          setCurrentClub(JSON.parse(storedCurrentClub) as Club);
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.error('No token found in localStorage');
+          router.push('/');
+          return;
+        }
+
+        try {
+          const response = await api.get<User>('/users/me/');
+          console.log('User data:', response.data);
+          setUser(response.data);
+        } catch (err) {
+          console.error('Error fetching user data:', err);
+          router.push('/');
+          return;
+        }
+
+        // Fetch user's clubs
+        try {
+          const clubsResponse = await api.get<Club[]>('/clubs/');
+          console.log('Clubs data:', clubsResponse.data);
+          setClubs(clubsResponse.data as Club[]);
+
+          if (clubsResponse.data && clubsResponse.data.length > 0) {
+            setCurrentClub(clubsResponse.data[0] as Club);
+          }
+        } catch (err) {
+          console.error('Error fetching clubs:', err);
+          // Don't redirect here, just log the error
         }
         
-        // Get user's clubs
-        const userClubsData = response.data.clubs || [];
-        setUserClubs(userClubsData);
-        
-        // If no current club but user has clubs, set the first one as current
-        if (!storedCurrentClub && userClubsData.length > 0) {
-          setCurrentClub(userClubsData[0]);
+        // Fetch competition types
+        try {
+          console.log('Fetching competition types...');
+          const typesResponse = await api.get<CompetitionType[]>('/competition-types/');
+          console.log('Competition types data:', typesResponse.data);
+          setCompetitionTypes(typesResponse.data as CompetitionType[]);
+          if (typesResponse.data && typesResponse.data.length > 0) {
+            setSelectedCompetitionType((typesResponse.data[0] as CompetitionType).id);
+          }
+        } catch (err) {
+          console.error('Error fetching competition types:', err);
+          setError('Failed to load competition types. Please try again later.');
+          // Don't redirect here, just show an error
         }
       } catch (error) {
-        console.error('Error fetching user data:', error);
-        localStorage.removeItem('token');
+        console.error('Unexpected error in fetchUserData:', error);
         router.push('/');
       }
     };
 
     fetchUserData();
-  }, [mounted]);
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,20 +101,59 @@ export default function CreateCompetition() {
       return;
     }
 
+    if (!selectedCompetitionType) {
+      setError('You must select a competition type');
+      return;
+    }
+
     try {
-      await api.post('/competitions/', {
+      console.log('Submitting competition with data:', {
         name,
         num_players: numPlayers,
-        rule_set_id: 1,  // Default rule set, you can modify this later
+        competition_type: selectedCompetitionType,
         parallel_matches: parallelMatches,
         max_rounds: maxRounds,
         club: currentClub.id
       });
+      
+      const response = await api.post('/competitions/', {
+        name,
+        num_players: numPlayers,
+        competition_type: selectedCompetitionType,
+        parallel_matches: parallelMatches,
+        max_rounds: maxRounds,
+        club: currentClub.id
+      });
+      
+      console.log('Competition created successfully:', response.data);
       router.push('/competition/manage');
     } catch (error: any) {
       console.error('Error creating competition:', error);
-      if (error.response?.data?.error) {
+      console.error('Error response:', error.response?.data);
+      
+      // Display detailed error information
+      if (error.response?.data?.non_field_errors) {
+        console.error('Error details:', error.response.data.non_field_errors);
+        setError(error.response.data.non_field_errors[0]);
+      } else if (error.response?.data?.creator) {
+        // Handle creator field errors specifically
+        const creatorErrors = Array.isArray(error.response.data.creator) 
+          ? error.response.data.creator.join(', ')
+          : error.response.data.creator;
+        setError(`Creator error: ${creatorErrors}`);
+      } else if (error.response?.data?.error) {
         setError(error.response.data.error);
+      } else if (error.response?.data) {
+        // Handle any field errors by converting the error object to a readable string
+        const errorMessages = Object.entries(error.response.data)
+          .map(([field, errors]) => {
+            const errorText = Array.isArray(errors) ? errors.join(', ') : errors;
+            return `${field}: ${errorText}`;
+          })
+          .join('; ');
+        setError(`Validation errors: ${errorMessages}`);
+      } else if (error.message) {
+        setError(`Failed to create competition: ${error.message}`);
       } else {
         setError('Failed to create competition');
       }
@@ -120,162 +171,146 @@ export default function CreateCompetition() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Navigation onLogout={handleLogout} />
-      
-      <div className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md mx-auto">
-          <div className="bg-white shadow rounded-lg p-6">
-            <PageHeading 
-              title="Create New Competition" 
-              infoText={pageDescriptions.createCompetition}
-              className="text-2xl font-bold mb-6"
-            />
-            
-            <form onSubmit={handleSubmit}>
-              <div className="mb-4">
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                  Competition Name
-                </label>
-                <input
-                  type="text"
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  required
-                />
-              </div>
-
-              {userClubs.length > 1 && (
-                <div className="mb-4">
-                  <label htmlFor="club" className="block text-sm font-medium text-gray-700 mb-2">
-                    Club
-                  </label>
-                  <select
-                    id="club"
-                    value={currentClub?.id || ''}
-                    onChange={async (e) => {
-                      const selectedClub = userClubs.find(club => club.id === parseInt(e.target.value));
-                      if (selectedClub) {
-                        try {
-                          const token = localStorage.getItem('token');
-                          await api.put<{message: string, club: Club}>(
-                            '/club-users/set_current_club/',
-                            { club_id: selectedClub.id },
-                            { headers: { Authorization: `Token ${token}` } }
-                          );
-                          
-                          setCurrentClub(selectedClub);
-                          localStorage.setItem('currentClub', JSON.stringify(selectedClub));
-                        } catch (error) {
-                          console.error('Error changing club:', error);
-                          setError('Failed to change club. Please try again.');
-                        }
-                      }
-                    }}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                    required
-                  >
-                    <option value="">Select a club</option>
-                    {userClubs.map(club => (
-                      <option key={club.id} value={club.id}>
-                        {club.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {userClubs.length === 1 && currentClub && (
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Club
-                  </label>
-                  <div className="mt-1 p-2 bg-gray-100 rounded-md text-gray-700">
-                    {currentClub.name}
-                  </div>
-                </div>
-              )}
-
-              <div className="mb-4">
-                <label htmlFor="numPlayers" className="block text-sm font-medium text-gray-700 mb-2">
-                  Number of Players
-                </label>
-                <input
-                  type="number"
-                  id="numPlayers"
-                  min={4}
-                  max={40}
-                  value={numPlayers}
-                  onChange={(e) => setNumPlayers(parseInt(e.target.value))}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                />
-                <p className="mt-1 text-sm text-gray-500">
-                  Choose a number between 4 and 40
-                </p>
-              </div>
-
-              <div className="mb-4">
-                <label htmlFor="parallelMatches" className="block text-sm font-medium text-gray-700 mb-2">
-                  Parallel Matches
-                </label>
-                <input
-                  type="number"
-                  id="parallelMatches"
-                  min={1}
-                  max={10}
-                  value={parallelMatches}
-                  onChange={(e) => setParallelMatches(parseInt(e.target.value))}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                />
-                <p className="mt-1 text-sm text-gray-500">
-                  Number of matches that can be played simultaneously (1-10)
-                </p>
-              </div>
-
-              <div className="mb-4">
-                <label htmlFor="maxRounds" className="block text-sm font-medium text-gray-700 mb-2">
-                  Maximum Rounds
-                </label>
-                <input
-                  type="number"
-                  id="maxRounds"
-                  min={1}
-                  max={20}
-                  value={maxRounds}
-                  onChange={(e) => setMaxRounds(parseInt(e.target.value))}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                />
-                <p className="mt-1 text-sm text-gray-500">
-                  Maximum number of rounds to generate (1-20)
-                </p>
-              </div>
-
-              {error && (
-                <div className="mb-4 text-red-600 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <div className="flex justify-between">
-                <button
-                  type="button"
-                  onClick={() => router.back()}
-                  className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  Create Competition
-                </button>
-              </div>
-            </form>
+    <div className="min-h-screen bg-gray-50">
+      <Navigation user={user} onLogout={handleLogout} />
+      <PageHeading title="Create Competition" infoText={pageDescriptions.createCompetition} />
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
           </div>
-        </div>
+        )}
+        <form onSubmit={handleSubmit} className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="name">
+              Competition Name
+            </label>
+            <input
+              id="name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              required
+            />
+          </div>
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="numPlayers">
+              Number of Players
+            </label>
+            <input
+              id="numPlayers"
+              type="number"
+              min={4}
+              max={40}
+              value={numPlayers}
+              onChange={(e) => setNumPlayers(parseInt(e.target.value))}
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              required
+            />
+            <p className="text-gray-600 text-xs italic">Must be between 4 and 40</p>
+          </div>
+          
+          {competitionTypes.length > 0 && (
+            <div className="mb-6">
+              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="competitionType">
+                Competition Type
+              </label>
+              <select
+                id="competitionType"
+                value={selectedCompetitionType}
+                onChange={(e) => setSelectedCompetitionType(parseInt(e.target.value))}
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                required
+              >
+                {competitionTypes.map(type => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-gray-600 text-xs italic">Select the type of competition</p>
+            </div>
+          )}
+          
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="parallelMatches">
+              Parallel Matches
+            </label>
+            <input
+              id="parallelMatches"
+              type="number"
+              min={1}
+              max={10}
+              value={parallelMatches}
+              onChange={(e) => setParallelMatches(parseInt(e.target.value))}
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              required
+            />
+            <p className="text-gray-600 text-xs italic">Number of matches to run simultaneously (1-10)</p>
+          </div>
+          
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="maxRounds">
+              Maximum Rounds
+            </label>
+            <input
+              id="maxRounds"
+              type="number"
+              min={1}
+              max={20}
+              value={maxRounds}
+              onChange={(e) => setMaxRounds(parseInt(e.target.value))}
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              required
+            />
+            <p className="text-gray-600 text-xs italic">Maximum number of rounds to generate (1-20)</p>
+          </div>
+          {clubs.length > 0 && (
+            <div className="mb-6">
+              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="club">
+                Club
+              </label>
+              <select
+                id="club"
+                value={currentClub?.id || ''}
+                onChange={(e) => {
+                  const selectedClub = clubs.find(club => club.id === parseInt(e.target.value));
+                  setCurrentClub(selectedClub || null);
+                }}
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                required
+              >
+                {clubs.map(club => (
+                  <option key={club.id} value={club.id}>
+                    {club.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <button
+              type="submit"
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            >
+              Create Competition
+            </button>
+          </div>
+        </form>
+        
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-8 p-4 border border-gray-300 rounded">
+            <h3 className="text-lg font-bold">Debug Info</h3>
+            <div className="mt-2">
+              <p><strong>Competition Types:</strong> {competitionTypes.length}</p>
+              <p><strong>Selected Type:</strong> {selectedCompetitionType}</p>
+              <p><strong>User:</strong> {user ? user.username : 'Not loaded'}</p>
+              <p><strong>Clubs:</strong> {clubs.length}</p>
+              <p><strong>Current Club:</strong> {currentClub ? currentClub.name : 'Not selected'}</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

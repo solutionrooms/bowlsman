@@ -8,6 +8,7 @@ import { useMessaging } from '../messaging/context/MessagingContext';
 
 interface NavigationProps {
   onLogout: () => void;
+  user?: User | null;
 }
 
 interface Club {
@@ -25,7 +26,7 @@ interface User {
   clubs?: Club[];
 }
 
-export default function Navigation({ onLogout }: NavigationProps) {
+export default function Navigation({ onLogout, user: userProp }: NavigationProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -36,7 +37,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
   const [currentClub, setCurrentClub] = useState<Club | null>(null);
   const [userClubs, setUserClubs] = useState<Club[]>([]);
   const [allClubs, setAllClubs] = useState<Club[]>([]);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(userProp || null);
   const [message, setMessage] = useState<string | null>(null);
   const { unreadCount, fetchUnreadCount } = useMessaging();
   
@@ -56,6 +57,15 @@ export default function Navigation({ onLogout }: NavigationProps) {
   useEffect(() => {
     // Create a flag to prevent multiple calls
     let isMounted = true;
+    
+    // If user is provided as prop, use it
+    if (userProp) {
+      setUser(userProp);
+      if (userProp.clubs) {
+        setUserClubs(userProp.clubs);
+      }
+      return;
+    }
     
     const fetchUserData = async () => {
       try {
@@ -110,7 +120,7 @@ export default function Navigation({ onLogout }: NavigationProps) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [userProp]);
 
   const handleLogout = async () => {
     try {

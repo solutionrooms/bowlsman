@@ -41,7 +41,8 @@ interface Competition {
   created_at: string;
   num_players: number;
   creator_name: string;
-  rule_set_id: number;
+  competition_type: number;
+  competition_type_name: string;
   parallel_matches: number;
   max_rounds: number;
   is_full: boolean;
@@ -64,6 +65,12 @@ interface CompetitionSchedule {
   side_2_player_2: number;
   side_2_player_3: number;
   side_2_player_4: number;
+}
+
+interface CompetitionType {
+  id: number;
+  name: string;
+  description: string;
 }
 
 const reorder = (list: Player[], startIndex: number, endIndex: number): Player[] => {
@@ -96,6 +103,7 @@ export default function ManageCompetitions() {
   const [selectedPlayerToReplace, setSelectedPlayerToReplace] = useState<Player | null>(null);
   const [currentClub, setCurrentClub] = useState<Club | null>(null);
   const [userClubs, setUserClubs] = useState<Club[]>([]);
+  const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>([]);
   const router = useRouter();
   
   useEffect(() => {
@@ -187,14 +195,16 @@ export default function ManageCompetitions() {
         
         const params = clubId ? { club_id: clubId } : {};
         
-        // Get competitions and users with club filter
-        const [competitionsResponse, usersResponse] = await Promise.all([
+        // Get competitions, users, and competition types
+        const [competitionsResponse, usersResponse, typesResponse] = await Promise.all([
           api.get<Competition[]>('/competitions/', { params }),
-          api.get<User[]>('/users/', { params })
+          api.get<User[]>('/users/', { params }),
+          api.get<CompetitionType[]>('/competition-types/')
         ]);
         
         setCompetitions(competitionsResponse.data);
         setAllUsers(usersResponse.data);
+        setCompetitionTypes(typesResponse.data);
       } catch (error) {
         console.error('Error fetching data:', error);
         router.push('/');
@@ -261,7 +271,7 @@ export default function ManageCompetitions() {
       const response = await api.put<Competition>(`competitions/${editingCompetition.id}/`, {
         name: editingCompetition.name,
         num_players: editingCompetition.num_players,
-        rule_set_id: editingCompetition.rule_set_id,
+        competition_type: editingCompetition.competition_type,
         parallel_matches: editingCompetition.parallel_matches,
         max_rounds: editingCompetition.max_rounds
       });
@@ -622,7 +632,7 @@ export default function ManageCompetitions() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Players</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Creator</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rule Set</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
@@ -643,7 +653,7 @@ export default function ManageCompetitions() {
                         {competition.creator_name}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {competition.rule_set_id}
+                        {competition.competition_type_name}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {competition.status === 'scheduled' ? (
@@ -982,8 +992,8 @@ export default function ManageCompetitions() {
                       <span className="text-gray-900">{competition.creator_name}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Rule Set:</span>
-                      <span className="text-gray-900">{competition.rule_set_id}</span>
+                      <span className="text-gray-500">Competition Type:</span>
+                      <span className="text-gray-900">{competition.competition_type_name}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-gray-500">Status:</span>
@@ -1174,17 +1184,27 @@ export default function ManageCompetitions() {
                     </div>
                     <div className="mb-4">
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Rule Set ID
+                        Competition Type
                       </label>
-                      <input
-                        type="number"
-                        value={editingCompetition.rule_set_id}
+                      <select
+                        value={editingCompetition.competition_type}
                         onChange={(e) => setEditingCompetition({
                           ...editingCompetition,
-                          rule_set_id: parseInt(e.target.value)
+                          competition_type: parseInt(e.target.value)
                         })}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                      />
+                      >
+                        {competitionTypes.map(type => (
+                          <option key={type.id} value={type.id}>
+                            {type.name}
+                          </option>
+                        ))}
+                      </select>
+                      {competitionTypes.find(t => t.id === editingCompetition.competition_type)?.description && (
+                        <p className="mt-1 text-sm text-gray-500">
+                          {competitionTypes.find(t => t.id === editingCompetition.competition_type)?.description}
+                        </p>
+                      )}
                     </div>
                     <div className="mb-4">
                       <label className="block text-sm font-medium text-gray-700 mb-2">
