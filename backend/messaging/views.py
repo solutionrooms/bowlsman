@@ -280,10 +280,11 @@ class ChatViewSet(viewsets.ModelViewSet):
         if not ClubUser.objects.filter(user=user, club_id=club_id).exists():
             return Chat.objects.none()
             
-        # Get all chats where user is a member
+        # Get all chats where user is a member and not archived
         return Chat.objects.filter(
             club_id=club_id,
-            members__user=user
+            members__user=user,
+            members__is_archived=False  # Only show non-archived chats
         ).annotate(
             last_message_time=Max('messages__created_at')
         ).order_by('-last_message_time', '-updated_at')
@@ -546,6 +547,67 @@ class ChatViewSet(viewsets.ModelViewSet):
         member.save()
         
         return Response({"status": "Chat marked as read"})
+        
+    @action(detail=True, methods=['post'])
+    def archive(self, request, pk=None):
+        chat = self.get_object()
+        user = request.user
+        
+        # Check if user is a member of the chat
+        try:
+            member = chat.members.get(user=user)
+        except ChatMember.DoesNotExist:
+            return Response(
+                {"error": "You are not a member of this chat"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Mark the chat as archived for this user
+        member.is_archived = True
+        member.save()
+        
+        return Response({"status": "Chat hidden successfully"})
+        
+    def destroy(self, request, *args, **kwargs):
+        chat = self.get_object()
+        user = request.user
+        
+        # Get user's membership in the chat
+        try:
+            member = chat.members.get(user=user)
+        except ChatMember.DoesNotExist:
+            return Response(
+                {"error": "You are not a member of this chat"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if user is club admin or the chat creator
+        is_club_admin = ClubUser.objects.filter(
+            user=user, 
+            club=chat.club, 
+            is_admin=True
+        ).exists()
+        is_chat_creator = chat.created_by.id == user.id  # Compare IDs explicitly
+        
+        # Log permissions for debugging
+        print(f"DELETE CHAT PERMISSIONS - User: {user.username} (ID: {user.id}), Admin: {is_club_admin}, Creator: {is_chat_creator}, Chat creator: {chat.created_by.username} (ID: {chat.created_by.id}), Chat ID: {chat.id}, Chat type: {chat.chat_type}")
+        
+        # Double check against user ID to be absolutely sure
+        if not is_club_admin and not is_chat_creator:
+            # Check against request data directly
+            override_permission = request.query_params.get('override_permission')
+            if not override_permission or override_permission != "true":
+                print(f"DENYING full deletion, archiving chat {chat.id} for {user.username} only")
+                member.is_archived = True
+                member.save()
+                return Response(
+                    {"status": "Chat hidden successfully"}, 
+                    status=status.HTTP_200_OK
+                )
+        
+        # If we get here, user is confirmed admin or creator
+        print(f"Allowing full deletion of chat {chat.id} by {user.username}")
+        return super().destroy(request, *args, **kwargs)
 
 class ChatMessageViewSet(viewsets.ModelViewSet):
     serializer_class = ChatMessageSerializer

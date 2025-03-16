@@ -80,13 +80,18 @@ class ChatSerializer(serializers.ModelSerializer):
     last_message = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
     members = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
+    can_archive = serializers.SerializerMethodField()
     
     class Meta:
         model = Chat
         fields = ['id', 'name', 'chat_type', 'created_by', 'created_by_username', 
                   'club', 'competition', 'created_at', 'updated_at', 
-                  'member_count', 'unread_count', 'last_message', 'display_name', 'members']
-        read_only_fields = ['created_by_username', 'member_count', 'unread_count', 'last_message', 'display_name', 'members']
+                  'member_count', 'unread_count', 'last_message', 'display_name', 
+                  'members', 'can_delete', 'can_archive']
+        read_only_fields = ['created_by_username', 'member_count', 'unread_count', 
+                           'last_message', 'display_name', 'members',
+                           'can_delete', 'can_archive']
     
     def get_member_count(self, obj):
         return obj.members.count()
@@ -148,6 +153,45 @@ class ChatSerializer(serializers.ModelSerializer):
                 })
             return members
         return []
+    
+    def get_can_delete(self, obj):
+        """Determine if the current user can fully delete the chat"""
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            return False
+            
+        user = request.user
+        
+        # Check if user is club admin or the chat creator
+        is_club_admin = False
+        try:
+            from users.models import ClubUser
+            is_club_admin = ClubUser.objects.filter(
+                user=user, 
+                club=obj.club, 
+                is_admin=True
+            ).exists()
+        except Exception as e:
+            print(f"Error checking if {user.username} is admin: {str(e)}")
+            pass
+            
+        is_chat_creator = obj.created_by == user
+        
+        # Log serializer permission calculation
+        can_delete = is_club_admin or is_chat_creator
+        print(f"SERIALIZER can_delete - User: {user.username}, Admin: {is_club_admin}, Creator: {is_chat_creator}, Result: {can_delete}, Chat ID: {obj.id}")
+        
+        return can_delete
+    
+    def get_can_archive(self, obj):
+        """Everyone can hide/archive a chat from their own view"""
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            return False
+            
+        # Check if user is a member of the chat
+        user = request.user
+        return obj.members.filter(user=user).exists()
 
 class ChatMemberSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='user', read_only=True)
