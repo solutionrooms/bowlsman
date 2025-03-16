@@ -428,11 +428,16 @@ class ChatViewSet(viewsets.ModelViewSet):
             for member_id in data.get('members', []):
                 try:
                     member = User.objects.get(id=member_id)
-                    ChatMember.objects.create(
-                        chat=chat,
-                        user=member,
-                        is_admin=False
-                    )
+                    # Skip if the user is the creator (already added above)
+                    if member.id == request.user.id:
+                        continue
+                    # Check if the member is already in the chat to prevent duplicate errors
+                    if not ChatMember.objects.filter(chat=chat, user=member).exists():
+                        ChatMember.objects.create(
+                            chat=chat,
+                            user=member,
+                            is_admin=False
+                        )
                 except User.DoesNotExist:
                     # Skip users that don't exist
                     continue
