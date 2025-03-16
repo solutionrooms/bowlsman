@@ -12,6 +12,7 @@ from .serializers import (
     ChatMemberSerializer, ChatMessageSerializer, ChatDetailSerializer
 )
 from users.models import ClubUser, Club, Competition, CompetitionUser
+from social.models import SocialBowl
 
 class MessageViewSet(viewsets.ModelViewSet):
     queryset = Message.objects.all()
@@ -329,6 +330,32 @@ class ChatViewSet(viewsets.ModelViewSet):
         # Ensure club_id is in the data
         data['club'] = club_id
         
+        # Handle notice field if provided
+        notice_id = data.get('notice')
+        if notice_id:
+            try:
+                notice = SocialBowl.objects.get(id=notice_id)
+                # Ensure the notice belongs to the same club
+                if notice.club_id != club_id:
+                    return Response(
+                        {"error": "Notice does not belong to the specified club"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                # Set the notice field
+                data['notice'] = notice_id
+                print(f"Setting notice_id to {notice_id} for new chat")
+            except SocialBowl.DoesNotExist:
+                return Response(
+                    {"error": "Notice not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except ValueError:
+                # Handle invalid notice ID format
+                return Response(
+                    {"error": "Invalid notice ID format"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
         # Handle different chat types
         chat_type = data.get('chat_type', 'direct')
         
@@ -339,7 +366,7 @@ class ChatViewSet(viewsets.ModelViewSet):
                     {"error": "Direct chats must have exactly one other member"}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
-        
+
         # For team chats, ensure the creator is a team captain
         if chat_type == 'team':
             # Check if user is a team captain (club admin)
@@ -366,11 +393,20 @@ class ChatViewSet(viewsets.ModelViewSet):
                     {"error": "Competition not found or does not belong to this club"}, 
                     status=status.HTTP_404_NOT_FOUND
                 )
-        
+
+        # Create serializer with the modified data
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         chat = serializer.save()
         
+        # If notice_id is provided, ensure it's set on the created chat
+        if notice_id:
+            # Double-check if notice is not properly set
+            if not chat.notice_id:
+                chat.notice_id = notice_id
+                chat.save(update_fields=['notice'])
+                print(f"Updated notice_id to {notice_id} for chat {chat.id}")
+
         # Add the creator as a member and admin
         ChatMember.objects.create(
             chat=chat,

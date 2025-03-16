@@ -86,7 +86,7 @@ class ChatSerializer(serializers.ModelSerializer):
     class Meta:
         model = Chat
         fields = ['id', 'name', 'chat_type', 'created_by', 'created_by_username', 
-                  'club', 'competition', 'created_at', 'updated_at', 
+                  'club', 'competition', 'notice', 'created_at', 'updated_at', 
                   'member_count', 'unread_count', 'last_message', 'display_name', 
                   'members', 'can_delete', 'can_archive']
         read_only_fields = ['created_by_username', 'member_count', 'unread_count', 

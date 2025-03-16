@@ -22,6 +22,14 @@ type Notice = {
   pdf_file?: string;
   participant_count: number;
   is_participant: boolean;
+  participants?: Array<{
+    id: number;
+    user: {
+      id: number;
+      username: string;
+    };
+    joined_at: string;
+  }>;
   created_by: {
     id: number;
     username: string;
@@ -49,7 +57,8 @@ export default function NoticeboardPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'social_bowl' | 'general' | 'for_sale'>('all');
   const [chatLoading, setChatLoading] = useState<{[key: number]: boolean}>({});
   const router = useRouter();
-  const { findExistingChat, createChat } = useMessaging();
+  const { findExistingChat, createChat, sendMessage } = useMessaging();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -72,6 +81,7 @@ export default function NoticeboardPage() {
             const response = await api.get<{user: User, current_club: Club | null}>('/users/me/');
             if (isMounted && response.data.current_club) {
               setCurrentClub(response.data.current_club);
+              setCurrentUser(response.data.user);
               localStorage.setItem('currentClub', JSON.stringify(response.data.current_club));
             } else if (isMounted) {
               setError('Please select a club first');
@@ -151,7 +161,7 @@ export default function NoticeboardPage() {
     }
   };
 
-  const handleStartChat = async (noticeId: number, creatorId: number) => {
+  const handleStartChat = async (noticeId: number, creatorId: number, notice: Notice) => {
     setChatLoading(prev => ({ ...prev, [noticeId]: true }));
     try {
       if (!currentClub) {
@@ -160,58 +170,134 @@ export default function NoticeboardPage() {
         return;
       }
       
-      console.log(`Starting chat with creator ID ${creatorId} from notice ${noticeId}`);
+      console.log(`Starting chat for notice type ${notice.notice_type} from notice ${noticeId}`);
       
-      try {
-        // Attempt to find an existing chat with this user
-        const existingChatId = await findExistingChat(currentClub.id, creatorId);
-        
-        if (existingChatId) {
-          // Navigate to the existing chat
-          console.log('Using existing chat:', existingChatId);
-          router.push(`/messaging?chat=${existingChatId}`);
-          setChatLoading(prev => ({ ...prev, [noticeId]: false }));
-          return;
-        }
-        
-        // Create a direct chat with the notice creator
-        const chatData = {
-          chat_type: 'direct',
-          club_id: currentClub.id,
-          members: [creatorId]
-        };
-        
-        console.log('Creating new chat with data:', chatData);
-        const newChat = await createChat(chatData);
-        console.log('Chat created or found:', newChat);
-        
-        // Redirect to the chat page
-        router.push(`/messaging?chat=${newChat.id}`);
-      } catch (error: any) {
-        console.error('Error handling chat:', error);
-        
-        // If we get an error that suggests a duplicate chat, try to find the existing one again
-        if (error.response && error.response.data && 
-            typeof error.response.data.error === 'string' &&
-            (error.response.data.error.includes('already exists') || 
-             error.response.data.error.includes('duplicate key'))) {
+      // Handle different notice types
+      if (notice.notice_type === 'for_sale') {
+        // For "for_sale" notices - create a direct chat with automated initial message
+        try {
+          // Attempt to find an existing chat with this user
+          const existingChatId = await findExistingChat(currentClub.id, creatorId);
           
-          console.log('Got duplicate key error, retrying to find existing chat');
-          
-          // Wait a moment and try again
-          await new Promise(resolve => setTimeout(resolve, 500));
-          const retryExistingChatId = await findExistingChat(currentClub.id, creatorId);
-          
-          if (retryExistingChatId) {
-            console.log('Found existing chat after error:', retryExistingChatId);
-            router.push(`/messaging?chat=${retryExistingChatId}`);
+          if (existingChatId) {
+            // Navigate to the existing chat
+            console.log('Using existing chat:', existingChatId);
+            router.push(`/messaging?chat=${existingChatId}`);
+            
+            // Send automated message about the for_sale item
+            const itemDetails = `Item for sale: ${notice.title}
+Price: ${notice.price ? `$${notice.price}` : 'Contact for price'}
+Description: ${notice.description}`;
+            
+            await sendMessage(existingChatId, itemDetails);
+            
             setChatLoading(prev => ({ ...prev, [noticeId]: false }));
             return;
           }
+          
+          // Create a direct chat with the notice creator
+          const chatData = {
+            chat_type: 'direct',
+            club_id: currentClub.id,
+            members: [creatorId]
+          };
+          
+          console.log('Creating new for_sale chat with data:', chatData);
+          const newChat = await createChat(chatData);
+          console.log('Chat created or found:', newChat);
+          
+          // Send automated message about the for_sale item
+          const itemDetails = `Item for sale: ${notice.title}
+Price: ${notice.price ? `$${notice.price}` : 'Contact for price'}
+Description: ${notice.description}`;
+          
+          await sendMessage(newChat.id, itemDetails);
+          
+          // Redirect to the chat page
+          router.push(`/messaging?chat=${newChat.id}`);
+        } catch (error: any) {
+          console.error('Error handling for_sale chat:', error);
+          handleChatError(error, currentClub.id, creatorId, noticeId);
         }
-        
-        // If we reach here, we couldn't recover from the error
-        setError('Failed to start chat. Please try again.');
+      } else if (notice.notice_type === 'social_bowl') {
+        // For "social_bowl" notices - create a group chat with all participants
+        try {
+          // Get detailed notice info to access participants
+          const response = await api.get<Notice>(`/api/notices/${noticeId}/`);
+          const detailedNotice = response.data;
+          
+          // Format date and time for the chat title
+          const dateStr = detailedNotice.date ? new Date(detailedNotice.date).toLocaleDateString() : '';
+          const chatTitle = `Social Bowling ${dateStr}${detailedNotice.time ? ' ' + detailedNotice.time : ''}`;
+          
+          // Get all participants' user IDs
+          // Make sure to include the creator and the current user in case they're not in participants list
+          const participantIds = detailedNotice.participants?.map(p => p.user.id) || [];
+          
+          // Add all unique member IDs (exclude duplicates)
+          const memberIds = Array.from(new Set([
+            ...participantIds,
+            creatorId,
+          ])).filter(id => id !== currentUser?.id); // exclude current user as they will be added automatically
+          
+          // Create a group chat with all participants
+          const chatData = {
+            chat_type: 'group',
+            club_id: currentClub.id,
+            name: chatTitle,
+            members: memberIds,
+            notice: noticeId  // Link the chat to the notice
+          };
+          
+          console.log('Creating new social_bowl group chat with data:', chatData);
+          const newChat = await createChat(chatData);
+          console.log('Group chat created:', newChat);
+          
+          // Send initial message with details
+          const initialMessage = `Welcome to the group chat for: ${detailedNotice.title}
+Date: ${dateStr}${detailedNotice.time ? ' at ' + detailedNotice.time : ''}
+Location: ${detailedNotice.location || 'TBD'}
+Description: ${detailedNotice.description}`;
+          
+          await sendMessage(newChat.id, initialMessage);
+          
+          // Redirect to the chat page
+          router.push(`/messaging?chat=${newChat.id}`);
+        } catch (error: any) {
+          console.error('Error handling social_bowl group chat:', error);
+          setError('Failed to create group chat. Please try again.');
+        }
+      } else {
+        // For other notice types (general) - create a direct chat with the creator
+        try {
+          // Attempt to find an existing chat with this user
+          const existingChatId = await findExistingChat(currentClub.id, creatorId);
+          
+          if (existingChatId) {
+            // Navigate to the existing chat
+            console.log('Using existing chat:', existingChatId);
+            router.push(`/messaging?chat=${existingChatId}`);
+            setChatLoading(prev => ({ ...prev, [noticeId]: false }));
+            return;
+          }
+          
+          // Create a direct chat with the notice creator
+          const chatData = {
+            chat_type: 'direct',
+            club_id: currentClub.id,
+            members: [creatorId]
+          };
+          
+          console.log('Creating new chat with data:', chatData);
+          const newChat = await createChat(chatData);
+          console.log('Chat created or found:', newChat);
+          
+          // Redirect to the chat page
+          router.push(`/messaging?chat=${newChat.id}`);
+        } catch (error: any) {
+          console.error('Error handling general chat:', error);
+          handleChatError(error, currentClub.id, creatorId, noticeId);
+        }
       }
     } catch (err) {
       console.error('Error creating chat:', err);
@@ -219,6 +305,32 @@ export default function NoticeboardPage() {
     } finally {
       setChatLoading(prev => ({ ...prev, [noticeId]: false }));
     }
+  };
+  
+  // Helper function to handle chat errors
+  const handleChatError = async (error: any, clubId: number, userId: number, noticeId: number) => {
+    // If we get an error that suggests a duplicate chat, try to find the existing one again
+    if (error.response && error.response.data && 
+        typeof error.response.data.error === 'string' &&
+        (error.response.data.error.includes('already exists') || 
+         error.response.data.error.includes('duplicate key'))) {
+      
+      console.log('Got duplicate key error, retrying to find existing chat');
+      
+      // Wait a moment and try again
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const retryExistingChatId = await findExistingChat(clubId, userId);
+      
+      if (retryExistingChatId) {
+        console.log('Found existing chat after error:', retryExistingChatId);
+        router.push(`/messaging?chat=${retryExistingChatId}`);
+        setChatLoading(prev => ({ ...prev, [noticeId]: false }));
+        return;
+      }
+    }
+    
+    // If we reach here, we couldn't recover from the error
+    setError('Failed to start chat. Please try again.');
   };
 
   const getNoticeTypeLabel = (type: string) => {
@@ -307,7 +419,7 @@ export default function NoticeboardPage() {
             </div>
             <div className="flex space-x-2">
               <button
-                onClick={() => handleStartChat(notice.id, notice.created_by.id)}
+                onClick={() => handleStartChat(notice.id, notice.created_by.id, notice)}
                 disabled={chatLoading[notice.id]}
                 className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >

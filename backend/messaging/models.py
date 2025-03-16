@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from users.models import Club, Competition
 from django.core.validators import FileExtensionValidator
 from users.models import validate_image_size
+from social.models import SocialBowl
 
 class Chat(models.Model):
     CHAT_TYPES = [
@@ -17,6 +18,7 @@ class Chat(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_chats')
     club = models.ForeignKey(Club, on_delete=models.CASCADE, related_name='club_chats')
     competition = models.ForeignKey(Competition, on_delete=models.CASCADE, related_name='competition_chats', null=True, blank=True)
+    notice = models.ForeignKey(SocialBowl, on_delete=models.SET_NULL, related_name='associated_chats', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

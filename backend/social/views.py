@@ -6,6 +6,7 @@ from django.utils import timezone
 from .models import SocialBowl, SocialBowlParticipant, NoticeImage
 from .serializers import SocialBowlSerializer, SocialBowlParticipantSerializer
 from users.models import ClubUser
+from messaging.models import Chat, ChatMember
 import json
 
 
@@ -202,6 +203,21 @@ class SocialBowlViewSet(viewsets.ModelViewSet):
             user=request.user
         )
         
+        # Add user to any associated group chats for this social bowl
+        associated_chats = Chat.objects.filter(
+            notice=social_bowl,
+            chat_type='group'
+        )
+        
+        for chat in associated_chats:
+            # Check if user is already in the chat
+            if not ChatMember.objects.filter(chat=chat, user=request.user).exists():
+                ChatMember.objects.create(
+                    chat=chat,
+                    user=request.user,
+                    is_admin=False
+                )
+        
         serializer = SocialBowlSerializer(
             social_bowl, 
             context={'request': request}
@@ -232,8 +248,19 @@ class SocialBowlViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Remove user from participants
+        # Remove user from participation
         participant.delete()
+        
+        # Remove user from any associated group chats for this social bowl
+        associated_chats = Chat.objects.filter(
+            notice=social_bowl,
+            chat_type='group'
+        )
+        
+        for chat in associated_chats:
+            # Only remove if user is not the creator of the chat
+            if chat.created_by != request.user:
+                ChatMember.objects.filter(chat=chat, user=request.user).delete()
         
         serializer = SocialBowlSerializer(
             social_bowl, 
