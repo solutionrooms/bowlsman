@@ -19,12 +19,33 @@ User authentication system that allows users to log in to the application with t
 - Club selection interface: All users (only displayed for users with multiple club memberships)
 
 **Underlying API Calls:**
-- `POST /api/login/`
+- `POST /api/users/login/`
   - Request: `{ username, password, club_id (optional) }`
   - Response: User details, authentication token, and club information
 - `POST /api/logout/`
   - Request: Authentication token in header
   - Response: Confirmation of logout
+
+### Registration
+**Overview:**
+System to allow new users to create an account on the platform.
+
+**Frontend Route:** `/` (shared with login)
+
+**Features:**
+- User registration with username, email, first name, last name, and postcode
+- Password creation with strength validation
+- Privacy policy acceptance requirement
+- Error handling for registration issues
+- Toggle between login and registration screens
+
+**Access Requirements:**
+- Registration page: All users
+
+**Underlying API Calls:**
+- `POST /api/users/register/`
+  - Request: `{ username, password, email, first_name, last_name, postcode }`
+  - Response: Confirmation of successful registration
 
 ### Reset Password
 **Overview:**
