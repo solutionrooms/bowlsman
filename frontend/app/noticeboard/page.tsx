@@ -22,6 +22,7 @@ type Notice = {
   pdf_file?: string;
   participant_count: number;
   is_participant: boolean;
+  is_broadcast?: boolean;
   participants?: Array<{
     id: number;
     user: {

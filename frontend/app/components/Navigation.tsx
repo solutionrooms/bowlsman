@@ -233,7 +233,7 @@ export default function Navigation({ onLogout, user: userProp }: NavigationProps
           {/* Logo and brand */}
           <div className="flex items-center">
             <div className="flex-shrink-0">
-              <Link href={currentClub ? "/home" : "/dashboard"} className="text-xl font-bold">
+              <Link href="/home" className="text-xl font-bold">
                 BowlsHub
               </Link>
             </div>
@@ -560,14 +560,14 @@ export default function Navigation({ onLogout, user: userProp }: NavigationProps
               </Link>
             </>
           ) : (
-            // For users without a club, show a link to dashboard
+            // For users without a club, show a link to home
             <Link
-              href="/dashboard"
+              href="/home"
               className={`block px-3 py-2 rounded-md text-base font-medium ${
-                pathname === '/dashboard' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
+                pathname === '/home' ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-500'
               }`}
             >
-              Dashboard
+              Home
             </Link>
           )}
 

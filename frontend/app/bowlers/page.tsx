@@ -77,17 +77,15 @@ export default function Bowlers() {
           });
           
           const clubMembers = clubMembersResponse.data.map((member: any) => {
-            // Extract club role from the clubs array for the current club
-            const currentClubMembership = member.clubs?.find((club: any) => club.id === clubId);
-            
+            // The response already contains is_admin and club_role fields
             return {
-              id: member.id, // The user's ID is directly on the member object
-              username: member.username,
-              first_name: member.first_name,
-              last_name: member.last_name,
-              email: member.email,
-              is_admin: currentClubMembership?.is_admin || false,
-              club_role: currentClubMembership?.club_role || ''
+              id: member.user_details?.id || member.user, // Use user_details.id or fall back to user
+              username: member.user_details?.username || '',
+              first_name: member.user_details?.display_name?.split(' ')[0] || '',
+              last_name: member.user_details?.display_name?.split(' ').slice(1).join(' ') || '',
+              email: member.email || '',
+              is_admin: member.is_admin || false,
+              club_role: member.club_role || ''
             };
           });
           

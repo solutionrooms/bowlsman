@@ -64,6 +64,11 @@ class SocialBowlViewSet(viewsets.ModelViewSet):
         if notice_type:
             queryset = queryset.filter(notice_type=notice_type)
         
+        # Filter by is_broadcast flag if specified
+        is_broadcast = self.request.query_params.get('is_broadcast', None)
+        if is_broadcast and is_broadcast.lower() == 'true':
+            queryset = queryset.filter(is_broadcast=True)
+        
         # Only show future social bowls by default if filtering for social_bowl type
         if notice_type == 'social_bowl':
             show_past = self.request.query_params.get('show_past', False)
@@ -83,6 +88,31 @@ class SocialBowlViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Handle creating a notice with multiple images"""
+        # Check if this is a broadcast notice
+        is_broadcast = request.data.get('is_broadcast') == 'true'
+        notice_type = request.data.get('notice_type')
+        
+        # If it's a broadcast notice or request, check permissions
+        if is_broadcast or notice_type == 'broadcast':
+            club_id = request.data.get('club')
+            user = request.user
+            
+            # Get the user's club membership
+            club_user = ClubUser.objects.filter(user=user, club_id=club_id).first()
+            
+            # Check if user is a system admin, club admin, or has an official role
+            is_authorized = (
+                user.is_staff or 
+                (club_user and club_user.is_admin) or
+                (club_user and club_user.club_role in ['President', 'Vice-President', 'Secretary', 'Treasurer'])
+            )
+            
+            if not is_authorized:
+                return Response(
+                    {"detail": "You do not have permission to create broadcast notices."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
         has_multiple_images = False
         additional_images = []
         
@@ -118,6 +148,32 @@ class SocialBowlViewSet(viewsets.ModelViewSet):
     
     def update(self, request, *args, **kwargs):
         """Handle updating a notice with multiple images"""
+        # Check if this is a broadcast notice update
+        is_broadcast = request.data.get('is_broadcast') == 'true'
+        notice_type = request.data.get('notice_type')
+        
+        # If it's being changed to a broadcast notice, check permissions
+        if is_broadcast or notice_type == 'broadcast':
+            instance = self.get_object()
+            club_id = instance.club.id
+            user = request.user
+            
+            # Get the user's club membership
+            club_user = ClubUser.objects.filter(user=user, club_id=club_id).first()
+            
+            # Check if user is a system admin, club admin, or has an official role
+            is_authorized = (
+                user.is_staff or 
+                (club_user and club_user.is_admin) or
+                (club_user and club_user.club_role in ['President', 'Vice-President', 'Secretary', 'Treasurer'])
+            )
+            
+            if not is_authorized:
+                return Response(
+                    {"detail": "You do not have permission to create broadcast notices."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
         has_multiple_images = False
         additional_images = []
         

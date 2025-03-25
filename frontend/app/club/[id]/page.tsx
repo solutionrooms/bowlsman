@@ -145,39 +145,24 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('Club members (raw):', membersResponse.data);
         console.log('First member raw data:', membersResponse.data[0]);
         
-        // Process the member data using the same approach as the bowlers page
+        // Process the member data - the API now returns a more complete format
         const enrichedMembers = membersResponse.data.map((member: any) => {
-          // Extract club role from the clubs array for the current club
-          const currentClubMembership = member.clubs?.find((club: any) => club.id === clubId);
-          
-          // Create user_details object
-          const user_details = {
+          // The response already includes all the data we need: is_admin, club_role, and user_details
+          return {
             id: member.id,
-            username: member.username,
-            display_name: member.first_name || member.last_name 
-              ? `${member.first_name} ${member.last_name}`.trim() 
-              : member.username
+            user: member.user,
+            username: member.user_details?.username || '',
+            first_name: member.user_details?.display_name?.split(' ')[0] || '',
+            last_name: member.user_details?.display_name?.split(' ').slice(1).join(' ') || '',
+            email: member.email || '',
+            is_admin: member.is_admin || false,
+            club_role: member.club_role || '',
+            user_details: member.user_details || {
+              id: member.user,
+              username: '',
+              display_name: ''
+            }
           };
-          
-          // Build the member object with club role and admin status
-          const enrichedMember = {
-            id: member.id,
-            user: member.id, // Use the ID directly like in bowlers page
-            username: member.username,
-            first_name: member.first_name,
-            last_name: member.last_name,
-            email: member.email,
-            is_admin: currentClubMembership?.is_admin || false,
-            club_role: currentClubMembership?.club_role || '',
-            user_details
-          };
-          
-          console.log(`Member ${member.id} enriched:`, {
-            is_admin: enrichedMember.is_admin,
-            club_role: enrichedMember.club_role
-          });
-          
-          return enrichedMember;
         });
         
         console.log('Enriched members:', enrichedMembers);
@@ -324,39 +309,24 @@ export default function ClubDetail({ params }: ClubDetailProps) {
 
       console.log('Members data from API:', response.data);
       
-      // Process the member data using the same approach as the bowlers page
+      // Process the member data - the API now returns a more complete format
       const enrichedMembers = response.data.map((member: any) => {
-        // Extract club role from the clubs array for the current club
-        const currentClubMembership = member.clubs?.find((club: any) => club.id === clubId);
-        
-        // Create user_details object
-        const user_details = {
+        // The response already includes all the data we need: is_admin, club_role, and user_details
+        return {
           id: member.id,
-          username: member.username,
-          display_name: member.first_name || member.last_name 
-            ? `${member.first_name} ${member.last_name}`.trim() 
-            : member.username
+          user: member.user,
+          username: member.user_details?.username || '',
+          first_name: member.user_details?.display_name?.split(' ')[0] || '',
+          last_name: member.user_details?.display_name?.split(' ').slice(1).join(' ') || '',
+          email: member.email || '',
+          is_admin: member.is_admin || false,
+          club_role: member.club_role || '',
+          user_details: member.user_details || {
+            id: member.user,
+            username: '',
+            display_name: ''
+          }
         };
-        
-        // Build the member object with club role and admin status
-        const enrichedMember = {
-          id: member.id,
-          user: member.id, // Use the ID directly like in bowlers page
-          username: member.username,
-          first_name: member.first_name,
-          last_name: member.last_name,
-          email: member.email,
-          is_admin: currentClubMembership?.is_admin || false,
-          club_role: currentClubMembership?.club_role || '',
-          user_details
-        };
-        
-        console.log(`Member ${member.id} refreshed:`, {
-          is_admin: enrichedMember.is_admin,
-          club_role: enrichedMember.club_role
-        });
-        
-        return enrichedMember;
       });
       
       console.log('Enriched members:', enrichedMembers);

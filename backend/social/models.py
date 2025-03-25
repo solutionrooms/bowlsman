@@ -10,6 +10,7 @@ class SocialBowl(models.Model):
         ('social_bowl', 'Social Bowling'),
         ('general', 'General Notice'),
         ('for_sale', 'For Sale'),
+        ('broadcast', 'Broadcast Notice'),
     ]
     
     title = models.CharField(max_length=100)
@@ -25,6 +26,7 @@ class SocialBowl(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_social_bowls')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    is_broadcast = models.BooleanField(default=False)  # For notices that should be shown on the dashboard
 
     class Meta:
         ordering = ['-created_at']

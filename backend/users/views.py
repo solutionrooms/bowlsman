@@ -62,8 +62,7 @@ class ClubViewSet(viewsets.ModelViewSet):
             )
             
         club_users = ClubUser.objects.filter(club=club)
-        users = [cu.user for cu in club_users]
-        serializer = UserSerializer(users, many=True)
+        serializer = ClubUserSerializer(club_users, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])

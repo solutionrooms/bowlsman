@@ -32,12 +32,21 @@ class SocialBowlSerializer(serializers.ModelSerializer):
     participants = SocialBowlParticipantSerializer(many=True, read_only=True)
     additional_images = NoticeImageSerializer(many=True, read_only=True)
     
+    # Explicitly define the field to include the new broadcast type
+    notice_type = serializers.ChoiceField(choices=[
+        ('social_bowl', 'Social Bowling'),
+        ('general', 'General Notice'),
+        ('for_sale', 'For Sale'),
+        ('broadcast', 'Broadcast Notice'),
+    ])
+    
     class Meta:
         model = SocialBowl
         fields = [
             'id', 'title', 'description', 'notice_type', 'date', 'time', 
             'location', 'price', 'image', 'pdf_file', 'club', 'created_by', 'created_at', 
-            'updated_at', 'participant_count', 'is_participant', 'participants', 'additional_images'
+            'updated_at', 'participant_count', 'is_participant', 'participants', 'additional_images',
+            'is_broadcast'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by']
     
@@ -53,4 +62,16 @@ class SocialBowlSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context.get('request')
         validated_data['created_by'] = request.user
+        
+        # Auto-set is_broadcast flag for broadcast notices
+        if validated_data.get('notice_type') == 'broadcast':
+            validated_data['is_broadcast'] = True
+            
         return super().create(validated_data)
+        
+    def update(self, instance, validated_data):
+        # Auto-set is_broadcast flag for broadcast notices
+        if validated_data.get('notice_type') == 'broadcast':
+            validated_data['is_broadcast'] = True
+        
+        return super().update(instance, validated_data)

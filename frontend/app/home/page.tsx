@@ -47,6 +47,41 @@ interface ClubMember {
   };
 }
 
+interface BroadcastNotice {
+  id: number;
+  title: string;
+  description: string;
+  created_at: string;
+  created_by: {
+    id: number;
+    username: string;
+  };
+}
+
+interface Event {
+  id: number;
+  title: string;
+  date: string;
+  time: string;
+  location: string;
+  type: 'competition' | 'social_bowl';
+}
+
+interface GameScore {
+  id: number;
+  user: {
+    id: number;
+    username: string;
+    display_name: string;
+  };
+  competition: {
+    id: number;
+    name: string;
+  };
+  score: number;
+  created_at: string;
+}
+
 interface UserResponse {
   user: User;
   current_club: Club | null;
@@ -58,6 +93,9 @@ export default function Home() {
   const [clubMembership, setClubMembership] = useState<ClubUser | null>(null);
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [memberCount, setMemberCount] = useState<number>(0);
+  const [broadcastNotices, setBroadcastNotices] = useState<BroadcastNotice[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
+  const [recentScores, setRecentScores] = useState<GameScore[]>([]);
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
@@ -103,12 +141,14 @@ export default function Home() {
           }
           
           // Fetch club members - using the exact same format as the club detail page
-          const membersResponse = await api.get<ClubMember[]>(`/clubs/${response.data.current_club.id}/members`, {
+          const membersResponse = await api.get<ClubMember[]>(`/clubs/${response.data.current_club.id}/members/`, {
             headers: { Authorization: `Token ${token}` }
           });
           console.log('Club members:', membersResponse.data);
+          console.log('Club members data status:', membersResponse.status);
+          console.log('Club leadership members:', membersResponse.data.filter(m => m.is_admin || m.club_role));
           
-          // Sort members
+          // Sort members - we don't need to manipulate the data as it's already in the ClubUser format
           const sortedMembers = [...membersResponse.data].sort((a, b) => {
             if (a.is_admin && !b.is_admin) return -1;
             if (!a.is_admin && b.is_admin) return 1;
@@ -124,6 +164,44 @@ export default function Home() {
           });
           
           setClubMembers(sortedMembers);
+
+          // Fetch broadcast notices
+          const noticesResponse = await api.get<BroadcastNotice[]>('/notices/', {
+            headers: { Authorization: `Token ${token}` },
+            params: { 
+              club_id: response.data.current_club.id,
+              is_broadcast: true
+            }
+          });
+          setBroadcastNotices(noticesResponse.data);
+          
+          // Comment out these API calls since they're returning 404 errors
+          // These endpoints need to be implemented in the backend
+          /*
+          // Fetch upcoming events (next 2 days)
+          const eventsResponse = await api.get<Event[]>('/upcoming-events/', {
+            headers: { Authorization: `Token ${token}` },
+            params: { 
+              club_id: response.data.current_club.id,
+              days: 2
+            }
+          });
+          setUpcomingEvents(eventsResponse.data);
+          
+          // Fetch recent game scores
+          const scoresResponse = await api.get<GameScore[]>('/game-scores/', {
+            headers: { Authorization: `Token ${token}` },
+            params: { 
+              club_id: response.data.current_club.id,
+              limit: 3
+            }
+          });
+          setRecentScores(scoresResponse.data);
+          */
+          
+          // Set empty arrays for now until backend implements these endpoints
+          setUpcomingEvents([]);
+          setRecentScores([]);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -154,8 +232,39 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-100">
       <Navigation onLogout={handleLogout} />
-
+      
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Broadcast Notices Section */}
+        {broadcastNotices.length > 0 && (
+          <div className="mb-6">
+            {broadcastNotices.map(notice => (
+              <div key={notice.id} className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-3">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-yellow-800">{notice.title}</h3>
+                    <div className="mt-2 text-sm text-yellow-700">
+                      <p>{notice.description}</p>
+                    </div>
+                    <div className="mt-1">
+                      <Link 
+                        href={`/noticeboard/${notice.id}`}
+                        className="text-sm font-medium text-yellow-800 hover:text-yellow-600"
+                      >
+                        View Details →
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white shadow rounded-lg p-6 mb-6">
             <PageHeading 
@@ -254,6 +363,94 @@ export default function Home() {
                     <p className="text-gray-500 italic">No club leadership assigned yet.</p>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Upcoming Events Section */}
+          {currentClub && (
+            <div className="bg-white shadow rounded-lg p-6 mb-6">
+              <h2 className="text-xl font-semibold mb-4">Upcoming Events (Next 2 Days)</h2>
+              {upcomingEvents.length > 0 ? (
+                <div className="space-y-4">
+                  {upcomingEvents.map(event => (
+                    <div key={event.id} className="border-l-4 border-blue-500 pl-4 py-2">
+                      <h3 className="font-medium">{event.title}</h3>
+                      <p className="text-sm text-gray-600">
+                        {new Date(event.date).toLocaleDateString()} at {event.time}
+                      </p>
+                      <p className="text-sm text-gray-600">Location: {event.location}</p>
+                      <p className="text-sm text-gray-600">
+                        Type: {event.type === 'competition' ? 'Competition' : 'Social Bowl'}
+                      </p>
+                      <Link 
+                        href={event.type === 'competition' ? `/competition/${event.id}` : `/noticeboard/${event.id}`}
+                        className="text-sm text-blue-600 hover:text-blue-800"
+                      >
+                        View Details →
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500">No upcoming events in the next 2 days.</p>
+              )}
+            </div>
+          )}
+          
+          {/* Recent Scores Section */}
+          {currentClub && (
+            <div className="bg-white shadow rounded-lg p-6 mb-6">
+              <h2 className="text-xl font-semibold mb-4">Recent Game Scores</h2>
+              {recentScores.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Player
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Competition
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Score
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Date
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {recentScores.map(score => (
+                        <tr key={score.id}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">{score.user.display_name}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{score.competition.name}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900 font-bold">{score.score}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(score.created_at).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-gray-500">No recent game scores available.</p>
+              )}
+              <div className="mt-4">
+                <Link 
+                  href="/games"
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  View All Scores →
+                </Link>
               </div>
             </div>
           )}
