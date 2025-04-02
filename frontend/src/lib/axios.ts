@@ -1,6 +1,6 @@
 import axios from "axios";
 
-// Function to get the API URL
+// Function to get the API URL based on deployment mode
 export const getApiUrl = () => {
   // Try to get from window.__NEXT_DATA__
   if (typeof window !== 'undefined' && (window as any).__NEXT_DATA__?.runtimeConfig?.NEXT_PUBLIC_API_URL) {
@@ -8,9 +8,23 @@ export const getApiUrl = () => {
     return nextDataUrl;
   }
   
-  // Fallback to process.env, maintain original protocol (HTTP or HTTPS)
-  const envUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010';
-  return envUrl;
+  // Check deployment mode - defaults to local if not specified
+  const deploymentMode = process.env.DEPLOYMENT_MODE || 'local';
+  
+  // Choose API URL based on deployment mode
+  let apiBaseUrl;
+  if (deploymentMode === 'local') {
+    // Local development - direct to Django's default port
+    apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  } else if (deploymentMode === 'docker') {
+    // Docker deployment - use the mapped port
+    apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010';
+  } else {
+    // Production or other environments - use environment variable
+    apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.bowlshub.fridaydigital.co.uk';
+  }
+  
+  return apiBaseUrl;
 };
 
 const apiUrl = getApiUrl();

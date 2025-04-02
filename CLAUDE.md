@@ -1,18 +1,51 @@
 # CLAUDE.md - Bowlsman Project Guide
 
+## Deployment Modes
+
+The project supports two deployment modes:
+- `local`: Run components directly on host machine (faster for development)
+- `docker`: Run everything in Docker containers (consistent environment)
+
+You can switch between modes using the provided scripts:
+- `./run_local.sh`: Run in local mode
+- `./run_docker.sh`: Run in Docker mode
+
+## Environment Configuration
+
+The application uses .env files to manage environment-specific settings:
+- `backend/.env.local`: Local development settings for Django
+- `backend/.env.docker`: Docker development settings for Django
+- `frontend/.env.local`: Local development settings for Next.js
+- `frontend/.env.docker`: Docker development settings for Next.js
+
+When running in either mode, the appropriate .env file is copied to .env in each directory.
+
 ## Build/Lint/Test Commands
 
 ### Frontend
-- run all commands inside frontend container
-- Build: `npm run build` or `npx next build`
-- Dev server: `npm run dev` or `npx next dev`
-- Start prod: `npm run start` or `npx next start`
-- Lint: `npm run lint` or `npx next lint`
+
+#### Docker Mode
+- Run all commands inside frontend container
+- Build: `docker-compose exec frontend npm run build` 
+- Lint: `docker-compose exec frontend npm run lint`
+
+#### Local Mode
+- Build: `cd frontend && npm run build` or `npx next build`
+- Dev server: `cd frontend && npm run dev` or `npx next dev`
+- Start prod: `cd frontend && npm run start` or `npx next start`
+- Lint: `cd frontend && npm run lint` or `npx next lint`
 
 ### Backend
-- Run Django server inside container: `docker-compose up backend`
+
+#### Docker Mode
+- Run Django server: `docker-compose up backend`
 - Run tests: `docker-compose exec backend python manage.py test`
 - Run single test: `docker-compose exec backend python manage.py test users.tests.test_scheduling.TestRoundRobinSchedule.test_8_players`
+
+#### Local Mode
+- Run Django server: `cd backend && python manage.py runserver`
+- Run tests: `cd backend && python manage.py test`
+- Run single test: `cd backend && python manage.py test users.tests.test_scheduling.TestRoundRobinSchedule.test_8_players`
 
 ## Code Style Guidelines
 
@@ -27,7 +60,6 @@
 
 ### Backend
 - Django models use PascalCase, views use snake_case
-- Run all Django commands inside containers - never locally
 - Follow RESTful API conventions for endpoints
 - Proper error handling with specific HTTP status codes
 - Use Django test framework for testing
@@ -35,6 +67,8 @@
 ### General
 - Follow portable container principles - code should run anywhere
 - Leverage maintenance scripts (fix_*.sh) to maintain code consistency
+- Use DEPLOYMENT_MODE environment variable to handle environment-specific configurations
 
 ### Postgres
-- use the postgres MCP server 
+- In local mode: Use locally installed PostgreSQL (requires PostgreSQL installation)
+- In docker mode: PostgreSQL runs in a Docker container
