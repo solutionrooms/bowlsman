@@ -43,7 +43,7 @@ pip-delete-this-directory.txt
 *.swp
 *.swo
 .DS_Store
-.env.local
+# .env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -77,7 +77,6 @@ pids
 # Misc
 .DS_Store
 Thumbs.db
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -90,7 +89,7 @@ Thumbs.db
 /[Ll]ib64
 [Ll]ocal
 [Ss]cripts
-pyvenv.cfg
+pyvenv.cg
 .venv
 pip-selfcheck.json
 
