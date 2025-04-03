@@ -3,11 +3,16 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
 from django.utils import timezone
+import datetime
 from .models import SocialBowl, SocialBowlParticipant, NoticeImage
 from .serializers import SocialBowlSerializer, SocialBowlParticipantSerializer
 from users.models import ClubUser
 from messaging.models import Chat, ChatMember
+from .services import get_weather_forecast
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class IsClubMemberOrReadOnly(permissions.BasePermission):
@@ -47,9 +52,41 @@ class IsClubMemberOrReadOnly(permissions.BasePermission):
 class SocialBowlViewSet(viewsets.ModelViewSet):
     """
     API endpoint for noticeboard notices.
+    
+    Includes weather forecast data for social bowling events with future dates.
     """
     serializer_class = SocialBowlSerializer
     permission_classes = [permissions.IsAuthenticated, IsClubMemberOrReadOnly]
+    
+    def _update_weather_forecast(self, instance):
+        """Update weather forecast for social bowling events if needed."""
+        # Only update for social bowling events with future dates
+        if (instance.notice_type == 'social_bowl' and 
+                instance.date and instance.location and 
+                instance.date >= timezone.now().date()):
+            
+            # Check if we need to update (not updated or last update was > 6 hours ago)
+            weather_stale = (
+                not instance.weather_updated_at or 
+                timezone.now() - instance.weather_updated_at > datetime.timedelta(hours=6)
+            )
+            
+            if weather_stale:
+                try:
+                    # Get weather forecast from service
+                    weather = get_weather_forecast(instance.location, instance.date)
+                    
+                    if weather:
+                        instance.weather_forecast = weather
+                        instance.weather_updated_at = timezone.now()
+                        instance.save(update_fields=['weather_forecast', 'weather_updated_at'])
+                        logger.info(f"Updated weather forecast for social bowl {instance.id}")
+                    else:
+                        logger.warning(f"No weather data available for social bowl {instance.id} at location {instance.location}")
+                except Exception as e:
+                    logger.exception(f"Error updating weather for social bowl {instance.id}: {str(e)}")
+        
+        return instance
 
     def get_queryset(self):
         queryset = SocialBowl.objects.all()
@@ -85,6 +122,35 @@ class SocialBowlViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(participants__user=self.request.user)
         
         return queryset
+        
+    def retrieve(self, request, *args, **kwargs):
+        """Retrieve a notice with weather forecast for social bowling events."""
+        instance = self.get_object()
+        
+        # Update weather for social bowling events
+        instance = self._update_weather_forecast(instance)
+        
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+        
+    def list(self, request, *args, **kwargs):
+        """List notices with weather forecasts for social bowling events."""
+        response = super().list(request, *args, **kwargs)
+        
+        # Update weather for social bowling events in the response
+        # Only do this if we're specifically looking for social bowls to avoid performance issues
+        if request.query_params.get('notice_type') == 'social_bowl':
+            queryset = self.filter_queryset(self.get_queryset())
+            
+            # Only process the first page if paginated to avoid performance issues
+            if self.paginator and hasattr(self.paginator, 'page'):
+                queryset = self.paginator.page.object_list
+                
+            # Update weather for each social bowl
+            for instance in queryset:
+                self._update_weather_forecast(instance)
+        
+        return response
 
     def create(self, request, *args, **kwargs):
         """Handle creating a notice with multiple images"""

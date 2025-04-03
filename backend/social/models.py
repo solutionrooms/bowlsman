@@ -27,6 +27,10 @@ class SocialBowl(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_broadcast = models.BooleanField(default=False)  # For notices that should be shown on the dashboard
+    
+    # Weather forecast fields
+    weather_forecast = models.JSONField(null=True, blank=True)  # Stores weather forecast data
+    weather_updated_at = models.DateTimeField(null=True, blank=True)  # Tracks when forecast was last updated
 
     class Meta:
         ordering = ['-created_at']

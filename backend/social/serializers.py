@@ -46,9 +46,9 @@ class SocialBowlSerializer(serializers.ModelSerializer):
             'id', 'title', 'description', 'notice_type', 'date', 'time', 
             'location', 'price', 'image', 'pdf_file', 'club', 'created_by', 'created_at', 
             'updated_at', 'participant_count', 'is_participant', 'participants', 'additional_images',
-            'is_broadcast'
+            'is_broadcast', 'weather_forecast', 'weather_updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'created_by']
+        read_only_fields = ['created_at', 'updated_at', 'created_by', 'weather_forecast', 'weather_updated_at']
     
     def get_participant_count(self, obj):
         return obj.participants.count()

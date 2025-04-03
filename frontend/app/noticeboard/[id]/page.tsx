@@ -41,6 +41,16 @@ type Notice = {
     image: string;
     order: number;
   }[];
+  weather_forecast?: {
+    condition: string;
+    icon?: string;
+    max_temp?: number;
+    min_temp?: number;
+    avg_temp?: number;
+    chance_of_rain?: number;
+    forecast_text?: string;
+  };
+  weather_updated_at?: string;
 };
 
 type Club = {
@@ -450,6 +460,40 @@ Description: ${notice.description}`;
                     <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                   </svg>
                   {notice.location}
+                </div>
+              )}
+              {notice.weather_forecast && (
+                <div className="mt-2 flex items-center text-sm">
+                  <div className="py-2 px-3 rounded-lg bg-blue-50 border border-blue-100 flex items-center">
+                    {notice.weather_forecast.icon ? (
+                      <img 
+                        src={notice.weather_forecast.icon.startsWith('http') ? notice.weather_forecast.icon : `https:${notice.weather_forecast.icon}`} 
+                        alt={notice.weather_forecast.condition} 
+                        className="flex-shrink-0 mr-2 h-8 w-8"
+                      />
+                    ) : (
+                      <svg className="flex-shrink-0 mr-2 h-8 w-8 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M5.5 16a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 16h-8z" />
+                      </svg>
+                    )}
+                    <div>
+                      <div className="font-medium text-blue-800">
+                        {notice.weather_forecast.condition || "Weather Forecast"}
+                      </div>
+                      <div className="text-xs text-blue-600">
+                        {notice.weather_forecast.max_temp !== undefined && notice.weather_forecast.min_temp !== undefined && (
+                          <span className="mr-2">
+                            {notice.weather_forecast.min_temp}°C - {notice.weather_forecast.max_temp}°C
+                          </span>
+                        )}
+                        {notice.weather_forecast.chance_of_rain !== undefined && (
+                          <span>
+                            {notice.weather_forecast.chance_of_rain}% chance of rain
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
               <div className="mt-2 flex items-center text-sm text-gray-500">

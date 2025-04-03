@@ -36,6 +36,16 @@ type Notice = {
     username: string;
   };
   created_at: string;
+  weather_forecast?: {
+    condition: string;
+    icon?: string;
+    max_temp?: number;
+    min_temp?: number;
+    avg_temp?: number;
+    chance_of_rain?: number;
+    forecast_text?: string;
+  };
+  weather_updated_at?: string;
 };
 
 type Club = {
@@ -386,6 +396,23 @@ Description: ${detailedNotice.description}`;
                 </svg>
                 {notice.location}
               </div>
+              {notice.weather_forecast && (
+                <div className="mt-1 flex items-center text-sm text-gray-500">
+                  {notice.weather_forecast.icon ? (
+                    <img 
+                      src={notice.weather_forecast.icon.startsWith('http') ? notice.weather_forecast.icon : `https:${notice.weather_forecast.icon}`} 
+                      alt={notice.weather_forecast.condition} 
+                      className="flex-shrink-0 mr-1.5 h-5 w-5"
+                    />
+                  ) : (
+                    <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M5.5 16a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 16h-8z" />
+                    </svg>
+                  )}
+                  {notice.weather_forecast.forecast_text || notice.weather_forecast.condition}
+                  {notice.weather_forecast.chance_of_rain ? ` (${notice.weather_forecast.chance_of_rain}% chance of rain)` : ''}
+                </div>
+              )}
               <div className="mt-1 flex items-center text-sm text-gray-500">
                 <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
