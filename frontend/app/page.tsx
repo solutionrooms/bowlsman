@@ -84,8 +84,8 @@ export default function Home() {
           setClubs(clubsResponse.data);
           setShowClubSelection(true);
         } else {
-          // User has no clubs, redirect to dashboard
-          router.push('/dashboard');
+          // User has no clubs, redirect to home
+          router.push('/home');
         }
       }
     } catch (error) {
@@ -127,8 +127,8 @@ export default function Home() {
             setClubs(response.data.clubs);
             setShowClubSelection(true);
           } else {
-            // Redirect to dashboard instead of club creation
-            router.push('/dashboard');
+            // Redirect to home instead of club creation
+            router.push('/home');
           }
         } else {
           setMessage(response.data.error || 'Login failed. Please try again.');
