@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import League, LeagueMember, PlayerNameMapping, Fixture
+from .models import League, LeagueMember, PlayerNameMapping, Fixture, PlayerAvailability
 from users.serializers import UserSerializer, ClubSerializer
 
 class LeagueMemberSerializer(serializers.ModelSerializer):
@@ -26,6 +26,22 @@ class FixtureSerializer(serializers.ModelSerializer):
             'is_upcoming', 'is_completed'
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+
+class FixtureDetailSerializer(FixtureSerializer):
+    player_availabilities = serializers.SerializerMethodField()
+    
+    class Meta(FixtureSerializer.Meta):
+        fields = FixtureSerializer.Meta.fields + ['player_availabilities']
+    
+    def get_player_availabilities(self, obj):
+        # Only return availability for the current user when requested
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            availability = obj.player_availabilities.filter(player=request.user).first()
+            if availability:
+                return PlayerAvailabilitySerializer(availability).data
+        return None
 
 class LeagueSerializer(serializers.ModelSerializer):
     club = ClubSerializer(read_only=True)
@@ -85,4 +101,18 @@ class PlayerNameMappingSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
         extra_kwargs = {
             'league': {'write_only': True}
-        } 
+        }
+
+
+class PlayerAvailabilitySerializer(serializers.ModelSerializer):
+    player = UserSerializer(read_only=True)
+    player_id = serializers.IntegerField(write_only=True)
+    availability_display = serializers.CharField(source='get_availability_display', read_only=True)
+    
+    class Meta:
+        model = PlayerAvailability
+        fields = [
+            'id', 'fixture', 'player', 'player_id', 'availability', 
+            'availability_display', 'notes', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at'] 

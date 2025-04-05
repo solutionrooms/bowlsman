@@ -1,12 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import api from '../../../src/lib/axios';
 import Navigation from '../../components/Navigation';
 import PageHeading from '../../components/PageHeading';
 import { canManageTeam } from '../../../src/utils/permissions';
+
+interface Availability {
+  id?: number;
+  fixture: number;
+  player_id?: number;
+  availability: string;
+  availability_display?: string;
+  notes?: string | null;
+}
 
 interface Fixture {
   id: number;
@@ -17,6 +26,7 @@ interface Fixture {
   against_score: number | null;
   is_upcoming: boolean;
   is_completed: boolean;
+  player_availabilities?: Availability | null;
 }
 
 interface League {
@@ -72,6 +82,212 @@ interface UserData {
     is_staff: boolean;
   };
 }
+
+const AvailabilitySelector = ({ fixture, leagueId, onAvailabilityUpdated }) => {
+  const [availability, setAvailability] = useState(fixture.player_availabilities?.availability || 'available');
+  const [notes, setNotes] = useState(fixture.player_availabilities?.notes || '');
+  const [loading, setLoading] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [error, setError] = useState('');
+  const notesRef = useRef(null);
+
+  useEffect(() => {
+    // Update local state if the fixture's availability changes
+    if (fixture.player_availabilities) {
+      setAvailability(fixture.player_availabilities.availability);
+      setNotes(fixture.player_availabilities.notes || '');
+    }
+  }, [fixture.player_availabilities]);
+
+  useEffect(() => {
+    // Close notes dropdown when clicking outside
+    function handleClickOutside(event) {
+      if (notesRef.current && !notesRef.current.contains(event.target)) {
+        setShowNotes(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [notesRef]);
+
+  const handleAvailabilityChange = async (newAvailability) => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const response = await api.post(`fixtures/${fixture.id}/update_availability`, {
+        availability: newAvailability,
+        notes: notes
+      });
+      
+      // Update the local state with the new availability
+      setAvailability(newAvailability);
+      
+      // Create an updated fixture object with the new availability
+      const updatedFixture = {
+        ...fixture,
+        player_availabilities: response.data
+      };
+      
+      // Call the parent component's callback to update the fixture in the league state
+      onAvailabilityUpdated(updatedFixture);
+      
+    } catch (err) {
+      console.error('Error updating availability:', err);
+      setError('Failed to update availability');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNotesChange = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const response = await api.post(`fixtures/${fixture.id}/update_availability`, {
+        availability: availability,
+        notes: notes
+      });
+      
+      // Create an updated fixture object with the new notes
+      const updatedFixture = {
+        ...fixture,
+        player_availabilities: response.data
+      };
+      
+      // Call the parent component's callback to update the fixture in the league state
+      onAvailabilityUpdated(updatedFixture);
+      
+      // Hide the notes input
+      setShowNotes(false);
+      
+    } catch (err) {
+      console.error('Error updating notes:', err);
+      setError('Failed to update notes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getAvailabilityColor = () => {
+    switch (availability) {
+      case 'available':
+        return 'bg-green-100 text-green-800';
+      case 'not_available':
+        return 'bg-red-100 text-red-800';
+      case 'prefer_not':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getAvailabilityText = () => {
+    switch (availability) {
+      case 'available':
+        return 'Available';
+      case 'not_available':
+        return 'Not Available';
+      case 'prefer_not':
+        return 'Prefer Not';
+      default:
+        return 'Unknown';
+    }
+  };
+
+  return (
+    <div className="relative">
+      <div className="flex items-center space-x-2">
+        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getAvailabilityColor()}`}>
+          {getAvailabilityText()}
+        </div>
+        
+        <div className="relative">
+          <button
+            onClick={() => setShowNotes(!showNotes)}
+            className="text-gray-500 hover:text-gray-700"
+            aria-label="Add notes"
+            title={notes ? notes : "Add notes about your availability"}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clipRule="evenodd" />
+            </svg>
+          </button>
+          
+          {showNotes && (
+            <div 
+              ref={notesRef}
+              className="absolute z-10 mt-2 w-64 bg-white shadow-lg rounded-md p-3 right-0"
+            >
+              <textarea 
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="Add notes about your availability..."
+                value={notes || ''}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+              />
+              <div className="mt-2 flex justify-end space-x-2">
+                <button 
+                  className="px-3 py-1 text-xs text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+                  onClick={() => setShowNotes(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="px-3 py-1 text-xs text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                  onClick={handleNotesChange}
+                  disabled={loading}
+                >
+                  Save
+                </button>
+              </div>
+              {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      <div className="mt-2 flex space-x-1">
+        <button
+          className={`px-2 py-1 text-xs font-medium rounded-md ${
+            availability === 'available' 
+              ? 'bg-green-600 text-white' 
+              : 'bg-green-100 text-green-800 hover:bg-green-200'
+          }`}
+          onClick={() => handleAvailabilityChange('available')}
+          disabled={loading || availability === 'available'}
+        >
+          Available
+        </button>
+        <button
+          className={`px-2 py-1 text-xs font-medium rounded-md ${
+            availability === 'not_available' 
+              ? 'bg-red-600 text-white' 
+              : 'bg-red-100 text-red-800 hover:bg-red-200'
+          }`}
+          onClick={() => handleAvailabilityChange('not_available')}
+          disabled={loading || availability === 'not_available'}
+        >
+          Not Available
+        </button>
+        <button
+          className={`px-2 py-1 text-xs font-medium rounded-md ${
+            availability === 'prefer_not' 
+              ? 'bg-yellow-600 text-white' 
+              : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+          }`}
+          onClick={() => handleAvailabilityChange('prefer_not')}
+          disabled={loading || availability === 'prefer_not'}
+        >
+          Prefer Not
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export default function TeamPage() {
   const router = useRouter();
@@ -389,6 +605,7 @@ export default function TeamPage() {
                         <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Fixture date</th>
                         <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">For</th>
                         <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Agst</th>
+                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Availability</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
@@ -412,6 +629,26 @@ export default function TeamPage() {
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                             {fixture.against_score !== null ? fixture.against_score : '-'}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm">
+                            {league.members.some(member => member.user.id === userId) ? (
+                              <AvailabilitySelector 
+                                fixture={fixture} 
+                                leagueId={league.id} 
+                                onAvailabilityUpdated={(updatedFixture) => {
+                                  // Update the fixture in the league state
+                                  const updatedFixtures = league.upcoming_fixtures.map(f => 
+                                    f.id === updatedFixture.id ? updatedFixture : f
+                                  );
+                                  setLeague({
+                                    ...league,
+                                    upcoming_fixtures: updatedFixtures
+                                  });
+                                }}
+                              />
+                            ) : (
+                              <span className="text-gray-500">-</span>
+                            )}
                           </td>
                         </tr>
                       ))}

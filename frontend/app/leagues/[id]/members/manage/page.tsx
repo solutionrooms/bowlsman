@@ -44,13 +44,18 @@ interface Club {
 
 interface ClubMember {
   id: number;
-  username: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  is_active: boolean;
-  is_staff: boolean;
-  joined_at?: string;
+  user: number;
+  club: number;
+  club_name: string;
+  is_admin: boolean;
+  club_role: string;
+  created_at: string;
+  last_login_at: string | null;
+  user_details: {
+    id: number;
+    username: string;
+    display_name: string;
+  };
 }
 
 interface ImportedPlayer {
@@ -65,6 +70,27 @@ interface ImportedFixture {
   opponent: string;
   venue: string;
   fixture_date: string;
+}
+
+interface FixtureAvailability {
+  id: number;
+  opponent: string;
+  venue: string;
+  fixture_date: string;
+  availabilities: {
+    user: {
+      id: number;
+      username: string;
+      first_name: string;
+      last_name: string;
+      display_name: string;
+    };
+    availability: {
+      status: string;
+      status_display: string;
+      notes: string | null;
+    };
+  }[];
 }
 
 interface UserData {
@@ -110,6 +136,9 @@ export default function ManageTeamMembersPage() {
   const [fixtureImportLoading, setFixtureImportLoading] = useState(false);
   const [fixtureImportError, setFixtureImportError] = useState<string | null>(null);
   const [showFixturesSection, setShowFixturesSection] = useState(false);
+  const [teamAvailabilities, setTeamAvailabilities] = useState<FixtureAvailability[]>([]);
+  const [availabilitiesLoading, setAvailabilitiesLoading] = useState(false);
+  const [showAvailabilitySection, setShowAvailabilitySection] = useState(false);
 
   useEffect(() => {
     // Set isMounted to true when component mounts
@@ -183,6 +212,51 @@ export default function ManageTeamMembersPage() {
       refreshClubMembers();
     }
   }, [league?.id]); // Only run when league ID changes or is first set
+  
+  // Fetch team availabilities when the availability section is shown
+  useEffect(() => {
+    if (showAvailabilitySection && league) {
+      fetchTeamAvailabilities();
+    }
+  }, [showAvailabilitySection, league?.id]);
+  
+  const fetchTeamAvailabilities = async () => {
+    if (!league) return;
+    
+    try {
+      setAvailabilitiesLoading(true);
+      
+      // Get all upcoming fixtures for this league
+      const fixturesResponse = await api.get(`fixtures`, {
+        params: {
+          league_id: league.id,
+          upcoming_only: true
+        }
+      });
+      
+      const fixtures = fixturesResponse.data;
+      
+      // Fetch team availability for each fixture
+      const availabilities = await Promise.all(
+        fixtures.map(async (fixture) => {
+          const availabilityResponse = await api.get(`fixtures/${fixture.id}/team_availabilities`);
+          return {
+            id: fixture.id,
+            opponent: fixture.opponent,
+            venue: fixture.venue,
+            fixture_date: fixture.fixture_date,
+            availabilities: availabilityResponse.data
+          };
+        })
+      );
+      
+      setTeamAvailabilities(availabilities);
+      setAvailabilitiesLoading(false);
+    } catch (err) {
+      console.error('Error fetching team availabilities:', err);
+      setAvailabilitiesLoading(false);
+    }
+  };
 
   useEffect(() => {
     // Log the club members data structure when it changes
@@ -192,12 +266,56 @@ export default function ManageTeamMembersPage() {
 
   useEffect(() => {
     // If search text is empty but dropdown is shown, show all available members
+    if (!mappingUser.searchText) {
+      if (showMappingDropdown) {
+        // Show all club members for mapping (first 10)
+        const availableMembers = clubMembers.filter(member => {
+          // Filter out members that are already mapped to other players
+          const alreadyMapped = importedPlayers.some(p => p.mapped_user_id === member.user_details?.id);
+          return member && member.user_details && !alreadyMapped;
+        });
+        setFilteredMappingUsers(availableMembers.slice(0, 10));
+      } else {
+        setFilteredMappingUsers([]);
+      }
+      return;
+    }
+
+    const searchLower = mappingUser.searchText.toLowerCase();
+    const filtered = clubMembers.filter(member => {
+      // Check if member has the necessary properties
+      if (!member || !member.user_details) {
+        return false;
+      }
+
+      // Filter out members that are already mapped to other players
+      const alreadyMapped = importedPlayers.some(p => p.mapped_user_id === member.user_details.id);
+      if (alreadyMapped) {
+        return false;
+      }
+      
+      // Create search strings
+      const displayName = member.user_details.display_name.toLowerCase();
+      const username = member.user_details.username.toLowerCase();
+      
+      // For all searches, use includes for more flexible matching
+      return displayName.includes(searchLower) || 
+             username.includes(searchLower);
+    });
+
+    // Don't limit the results - show all matches
+    setFilteredMappingUsers(filtered);
+  }, [mappingUser.searchText, clubMembers, showMappingDropdown, importedPlayers]);
+
+  // Filter members for the add team member search
+  useEffect(() => {
+    // If search text is empty but dropdown is shown, show all available members
     if (!searchText) {
       if (showDropdown) {
         // Show all members not already in the league
         const leagueMemberIds = new Set(league?.members?.map(m => m?.user?.id) || []);
         const available = clubMembers.filter(member => 
-          member && member.id && !leagueMemberIds.has(member.id)
+          member && member.user_details && !leagueMemberIds.has(member.user_details.id)
         );
         setFilteredMembers(available.slice(0, 10)); // Limit to first 10 for performance
       } else {
@@ -209,50 +327,27 @@ export default function ManageTeamMembersPage() {
     const searchLower = searchText.toLowerCase();
     const leagueMemberIds = new Set(league?.members?.map(m => m?.user?.id) || []);
     
-    // Reduce console logging to improve performance
-    // console.log('League Member IDs:', Array.from(leagueMemberIds));
-    
     const filtered = clubMembers.filter(member => {
       // Check if member has the necessary properties
-      if (!member || !member.id || !member.username) {
-        // console.log('Invalid member data:', member);
+      if (!member || !member.user_details) {
         return false;
       }
       
       // Don't show members already in the league
-      if (leagueMemberIds.has(member.id)) {
-        // console.log('Member already in league:', member.id, member.first_name, member.last_name);
+      if (leagueMemberIds.has(member.user_details.id)) {
         return false;
       }
 
-      // If search is just 1-2 characters, be more lenient
-      if (searchLower.length <= 2) {
-        const fullName = `${member.first_name || ''} ${member.last_name || ''}`.toLowerCase();
-        const username = (member.username || '').toLowerCase();
-        
-        return fullName.startsWith(searchLower) || 
-               member.first_name?.toLowerCase().startsWith(searchLower) || 
-               member.last_name?.toLowerCase().startsWith(searchLower) || 
-               username.startsWith(searchLower);
-      }
-
-      // Normal search for 3+ characters
-      const fullName = `${member.first_name || ''} ${member.last_name || ''}`.toLowerCase();
-      const username = (member.username || '').toLowerCase();
+      // Create search strings
+      const displayName = member.user_details.display_name.toLowerCase();
+      const username = member.user_details.username.toLowerCase();
       
-      // Reduce console logging to improve performance
-      // console.log('Checking member for search:', { 
-      //   id: member.id,
-      //   fullName, 
-      //   username, 
-      //   searchLower,
-      //   matches: fullName.includes(searchLower) || username.includes(searchLower)
-      // });
-      
-      return fullName.includes(searchLower) || username.includes(searchLower);
+      // Use includes for more flexible matching instead of startsWith
+      return displayName.includes(searchLower) || 
+             username.includes(searchLower);
     });
 
-    // console.log('Filtered Results for Add:', filtered);
+    // Show all matches without limiting to just one result
     setFilteredMembers(filtered);
   }, [searchText, clubMembers, league?.members, showDropdown]);
 
@@ -322,75 +417,16 @@ export default function ManageTeamMembersPage() {
     }
   };
 
-  useEffect(() => {
-    // If search text is empty but dropdown is shown, show all available members
-    if (!mappingUser.searchText) {
-      if (showMappingDropdown) {
-        // console.log('Showing all club members for mapping (first 10):', clubMembers.slice(0, 10));
-        setFilteredMappingUsers(clubMembers.slice(0, 10)); // Limit to first 10 for performance
-      } else {
-        setFilteredMappingUsers([]);
-      }
-      return;
-    }
-
-    // console.log('Mapping Search Text:', mappingUser.searchText);
-    // console.log('Total Club Members to search through:', clubMembers.length);
-    
-    const searchLower = mappingUser.searchText.toLowerCase();
-    const filtered = clubMembers.filter(member => {
-      // Check if member has the necessary properties
-      if (!member || !member.id || !member.username) {
-        // console.log('Invalid member data (mapping):', member);
-        return false;
-      }
-      
-      // If search is just 1-2 characters, be more lenient
-      if (searchLower.length <= 2) {
-        const fullName = `${member.first_name || ''} ${member.last_name || ''}`.toLowerCase();
-        const username = (member.username || '').toLowerCase();
-        
-        const matches = fullName.startsWith(searchLower) || 
-                       member.first_name?.toLowerCase().startsWith(searchLower) || 
-                       member.last_name?.toLowerCase().startsWith(searchLower) || 
-                       username.startsWith(searchLower);
-                       
-        // if (matches) {
-        //   console.log('Match found for short search:', { 
-        //     id: member.id,
-        //     fullName,
-        //     username,
-        //     searchLower
-        //   });
-        // }
-        
-        return matches;
-      }
-      
-      // Normal search for 3+ characters
-      const fullName = `${member.first_name || ''} ${member.last_name || ''}`.toLowerCase();
-      const username = (member.username || '').toLowerCase();
-      
-      const matches = fullName.includes(searchLower) || username.includes(searchLower);
-      
-      // console.log('Checking member for mapping:', { 
-      //   id: member.id,
-      //   fullName, 
-      //   username, 
-      //   searchLower,
-      //   matches
-      // });
-      
-      return matches;
-    });
-
-    // console.log('Filtered Results for Mapping:', filtered);
-    setFilteredMappingUsers(filtered);
-  }, [mappingUser.searchText, clubMembers, showMappingDropdown]);
-
   const handleCreateMapping = async (importedPlayer: ImportedPlayer, userId: number) => {
     try {
       setError(null);
+
+      // Check if this user is already mapped to another player
+      const existingMapping = importedPlayers.find(p => p.mapped_user_id === userId);
+      if (existingMapping) {
+        setError(`This member is already mapped to ${existingMapping.full_name}`);
+        return;
+      }
 
       // Create the name mapping
       await api.post(`leagues/${league?.id}/create_name_mapping`, {
@@ -405,33 +441,22 @@ export default function ManageTeamMembersPage() {
       setImportedPlayers(response.data);
 
       // Check if the user is already a team member
-      // League members have a nested user object with id
       const isAlreadyMember = league?.members?.some(member => member.user?.id === userId);
       
       // Only try to add the user as a team member if they're not already a member
       if (!isAlreadyMember) {
         try {
-          console.log(`Attempting to add user ${userId} as team member for league ${league?.id}`);
-          
-          const addMemberResponse = await api.post(`league-members`, {
+          await api.post(`league-members`, {
             user_id: userId,
             league: league?.id
           });
-          
-          console.log('Successfully added mapped user as team member:', addMemberResponse.data);
           
           // Refresh league data to get updated members list
           const leagueResponse = await api.get<League>(`leagues/${league?.id}`);
           setLeague(leagueResponse.data);
         } catch (addError: any) {
           console.error('Error adding mapped user as team member:', addError);
-          console.error('Error response:', addError.response?.data);
-          
-          // Don't show an error to the user for this part, as the mapping was successful
-          // Just log it for debugging purposes
         }
-      } else {
-        console.log(`User ${userId} is already a member of league ${league?.id}, skipping add`);
       }
 
       // Clear mapping state
@@ -450,10 +475,16 @@ export default function ManageTeamMembersPage() {
     try {
       setError(null);
 
-      await api.post(`leagues/${league?.id}/delete_name_mapping`, {
-        roster_first_name: importedPlayer.first_name,
-        roster_last_name: importedPlayer.last_name,
-        roster_full_name: importedPlayer.full_name
+      if (!importedPlayer.mapped_user_id) {
+        setError('No mapping exists to remove');
+        return;
+      }
+
+      // Use the correct parameter name: mapping_id
+      await api.delete(`leagues/${league?.id}/delete_name_mapping/`, {
+        data: {
+          mapping_id: importedPlayer.mapped_user_id
+        }
       });
 
       // Refresh imported players to update mappings
@@ -654,21 +685,114 @@ export default function ManageTeamMembersPage() {
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
               <button
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${!showFixturesSection ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                onClick={() => setShowFixturesSection(false)}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  !showFixturesSection && !showAvailabilitySection 
+                    ? 'border-blue-500 text-blue-600' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+                onClick={() => {
+                  setShowFixturesSection(false);
+                  setShowAvailabilitySection(false);
+                }}
               >
                 Team Members
               </button>
               <button
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${showFixturesSection ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                onClick={() => setShowFixturesSection(true)}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  showFixturesSection 
+                    ? 'border-blue-500 text-blue-600' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+                onClick={() => {
+                  setShowFixturesSection(true);
+                  setShowAvailabilitySection(false);
+                }}
               >
                 Fixtures
+              </button>
+              <button
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  showAvailabilitySection 
+                    ? 'border-blue-500 text-blue-600' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+                onClick={() => {
+                  setShowFixturesSection(false);
+                  setShowAvailabilitySection(true);
+                }}
+              >
+                Team Availability
               </button>
             </nav>
           </div>
 
-          {!showFixturesSection ? (
+          {showAvailabilitySection ? (
+            <>
+              {/* Team Availability section */}
+              <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                <div className="px-4 py-5 sm:p-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Team Availability</h3>
+                  
+                  {availabilitiesLoading ? (
+                    <div className="flex justify-center py-6">
+                      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                    </div>
+                  ) : teamAvailabilities.length === 0 ? (
+                    <div className="text-center py-6">
+                      <p className="text-sm text-gray-500">No upcoming fixtures found</p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 space-y-8">
+                      {teamAvailabilities.map((fixture) => (
+                        <div key={fixture.id} className="bg-gray-50 p-4 rounded-md">
+                          <h4 className="text-base font-medium text-gray-900 mb-2">
+                            {fixture.opponent} - {fixture.venue === 'home' ? 'Home' : 'Away'} - {new Date(fixture.fixture_date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                          </h4>
+                          
+                          <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg bg-white">
+                            <table className="min-w-full divide-y divide-gray-300">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Player</th>
+                                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Availability</th>
+                                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Notes</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200 bg-white">
+                                {fixture.availabilities.map((member) => (
+                                  <tr key={member.user.id} className="hover:bg-gray-50">
+                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
+                                      {member.user.display_name}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-4 text-sm">
+                                      <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                        member.availability.status === 'available' 
+                                          ? 'bg-green-100 text-green-800' 
+                                          : member.availability.status === 'not_available'
+                                          ? 'bg-red-100 text-red-800'
+                                          : member.availability.status === 'prefer_not'
+                                          ? 'bg-yellow-100 text-yellow-800'
+                                          : 'bg-gray-100 text-gray-800'
+                                      }`}>
+                                        {member.availability.status_display}
+                                      </div>
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                                      {member.availability.notes || '-'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : !showFixturesSection ? (
             <>
               {/* Team Members Import section */}
               <div className="bg-white shadow overflow-hidden sm:rounded-lg">
@@ -809,15 +933,15 @@ export default function ManageTeamMembersPage() {
                                                   <button
                                                     key={member.id}
                                                     className="w-full text-left px-4 py-2 hover:bg-gray-100 mapping-dropdown-item"
-                                                    onClick={() => handleCreateMapping(player, member.id)}
+                                                    onClick={() => handleCreateMapping(player, member.user_details.id)}
                                                   >
                                                     <div className="flex items-center">
                                                       <div>
                                                         <p className="text-sm font-medium text-gray-900">
-                                                          {member.first_name} {member.last_name}
+                                                          {member.user_details.display_name}
                                                         </p>
                                                         <p className="text-sm text-gray-500">
-                                                          {member.username}
+                                                          {member.user_details.username}
                                                         </p>
                                                       </div>
                                                     </div>
@@ -1013,16 +1137,16 @@ export default function ManageTeamMembersPage() {
                           <button
                             key={member.id}
                             className="w-full text-left px-4 py-2 hover:bg-gray-100 search-dropdown-item"
-                            onClick={() => handleAddMember(member.id)}
+                            onClick={() => handleAddMember(member.user_details.id)}
                             disabled={addingMember}
                           >
                             <div className="flex items-center">
                               <div>
                                 <p className="text-sm font-medium text-gray-900">
-                                  {member.first_name} {member.last_name}
+                                  {member.user_details.display_name}
                                 </p>
                                 <p className="text-sm text-gray-500">
-                                  {member.username}
+                                  {member.user_details.username}
                                 </p>
                               </div>
                             </div>

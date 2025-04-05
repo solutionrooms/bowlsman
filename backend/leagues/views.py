@@ -11,10 +11,11 @@ import logging
 import calendar
 import logging
 
-from .models import League, LeagueMember, PlayerNameMapping, Fixture
+from .models import League, LeagueMember, PlayerNameMapping, Fixture, PlayerAvailability
 from .serializers import (
     LeagueSerializer, LeagueDetailSerializer, LeagueMemberSerializer, 
-    PlayerNameMappingSerializer, FixtureSerializer
+    PlayerNameMappingSerializer, FixtureSerializer, FixtureDetailSerializer,
+    PlayerAvailabilitySerializer
 )
 from users.models import Club, ClubUser
 from messaging.models import Message
@@ -736,10 +737,15 @@ class FixtureViewSet(viewsets.ModelViewSet):
     """
     API endpoint for league fixtures.
     """
-    serializer_class = FixtureSerializer
+    
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return FixtureDetailSerializer
+        return FixtureSerializer
     
     def get_queryset(self):
-        logger.debug("LeagueViewSet.get_queryset called by %s", self.request.user)        # Filter by league if league_id is provided
+        logger.debug("FixtureViewSet.get_queryset called by %s", self.request.user)        
+        # Filter by league if league_id is provided
         league_id = self.request.query_params.get('league_id')
         upcoming_only = self.request.query_params.get('upcoming_only') == 'true'
         queryset = Fixture.objects.all()
@@ -790,6 +796,146 @@ class FixtureViewSet(viewsets.ModelViewSet):
             )
         
         serializer.save()
+        
+    @action(detail=True, methods=['get'])
+    def my_availability(self, request, pk=None):
+        """
+        Get the current user's availability for a fixture.
+        """
+        fixture = self.get_object()
+        
+        # Check if user is a member of the league
+        is_member = LeagueMember.objects.filter(
+            league=fixture.league, user=request.user
+        ).exists()
+        
+        if not is_member:
+            return Response(
+                {"error": "Only team members can view their availability."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get availability record if it exists
+        availability = PlayerAvailability.objects.filter(
+            fixture=fixture, player=request.user
+        ).first()
+        
+        if availability:
+            serializer = PlayerAvailabilitySerializer(availability)
+            return Response(serializer.data)
+        else:
+            # Return empty data with default values
+            return Response({
+                'fixture': fixture.id,
+                'player_id': request.user.id,
+                'availability': 'available',
+                'availability_display': 'Available',
+                'notes': None
+            })
+            
+    @action(detail=True, methods=['post'])
+    def update_availability(self, request, pk=None):
+        """
+        Update the current user's availability for a fixture.
+        """
+        fixture = self.get_object()
+        
+        # Check if user is a member of the league
+        is_member = LeagueMember.objects.filter(
+            league=fixture.league, user=request.user
+        ).exists()
+        
+        if not is_member:
+            return Response(
+                {"error": "Only team members can set their availability."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Validate input
+        availability_status = request.data.get('availability')
+        notes = request.data.get('notes')
+        
+        if not availability_status:
+            return Response(
+                {"error": "Availability status is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if availability status is valid
+        valid_statuses = [choice[0] for choice in PlayerAvailability.AVAILABILITY_CHOICES]
+        if availability_status not in valid_statuses:
+            return Response(
+                {"error": f"Invalid availability status. Must be one of: {', '.join(valid_statuses)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update or create availability record
+        availability, created = PlayerAvailability.objects.update_or_create(
+            fixture=fixture,
+            player=request.user,
+            defaults={
+                'availability': availability_status,
+                'notes': notes
+            }
+        )
+        
+        serializer = PlayerAvailabilitySerializer(availability)
+        return Response(serializer.data)
+        
+    @action(detail=True, methods=['get'])
+    def team_availabilities(self, request, pk=None):
+        """
+        Get all team member availabilities for a fixture.
+        Only visible to captains and deputies.
+        """
+        fixture = self.get_object()
+        league = fixture.league
+        
+        # Check if user is captain or deputy
+        is_captain_or_deputy = (league.captain == request.user or league.deputy == request.user)
+        
+        # Check if user is club admin
+        is_club_admin = ClubUser.objects.filter(
+            user=request.user, club=league.club, is_admin=True
+        ).exists()
+        
+        if not (is_captain_or_deputy or is_club_admin):
+            return Response(
+                {"error": "Only captains, deputies, or club admins can view team availabilities."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get all league members
+        members = LeagueMember.objects.filter(league=league).select_related('user')
+        
+        # Get all availabilities for this fixture
+        availabilities = PlayerAvailability.objects.filter(fixture=fixture)
+        availabilities_dict = {a.player_id: a for a in availabilities}
+        
+        # Build response with all members and their availabilities
+        result = []
+        for member in members:
+            user = member.user
+            availability = availabilities_dict.get(user.id)
+            
+            member_data = {
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'display_name': f"{user.first_name} {user.last_name}"
+                },
+                'availability': {
+                    'status': availability.availability if availability else 'available',
+                    'status_display': availability.get_availability_display() if availability else 'Available',
+                    'notes': availability.notes if availability else None
+                }
+            }
+            
+            result.append(member_data)
+        
+        return Response(result)
 
 class LeagueMemberViewSet(viewsets.ModelViewSet):
     """
@@ -798,7 +944,8 @@ class LeagueMemberViewSet(viewsets.ModelViewSet):
     serializer_class = LeagueMemberSerializer
     
     def get_queryset(self):
-        logger.debug("LeagueViewSet.get_queryset called by %s", self.request.user)        # Filter by league if league_id is provided
+        logger.debug("LeagueMemberViewSet.get_queryset called by %s", self.request.user)        
+        # Filter by league if league_id is provided
         league_id = self.request.query_params.get('league_id')
         queryset = LeagueMember.objects.all()
         
@@ -851,5 +998,127 @@ class LeagueMemberViewSet(viewsets.ModelViewSet):
             raise serializers.ValidationError(
                 {"user_id": "User must be a member of the club."}
             )
+        
+        serializer.save()
+
+
+class PlayerAvailabilityViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for player availabilities.
+    """
+    serializer_class = PlayerAvailabilitySerializer
+    
+    def get_queryset(self):
+        logger.debug("PlayerAvailabilityViewSet.get_queryset called by %s", self.request.user)
+        user = self.request.user
+        
+        # Filter by fixture if fixture_id is provided
+        fixture_id = self.request.query_params.get('fixture_id')
+        queryset = PlayerAvailability.objects.all()
+        
+        if fixture_id:
+            queryset = queryset.filter(fixture_id=fixture_id)
+        
+        # Get leagues where the user is a member
+        user_leagues = LeagueMember.objects.filter(user=user).values_list('league_id', flat=True)
+            
+        # By default, users can only see their own availabilities
+        if not user.is_staff:
+            # Get leagues where user is captain or deputy
+            captain_deputy_leagues = League.objects.filter(
+                Q(captain=user) | Q(deputy=user)
+            ).values_list('id', flat=True)
+            
+            # Get clubs where user is admin
+            admin_clubs = ClubUser.objects.filter(
+                user=user, is_admin=True
+            ).values_list('club_id', flat=True)
+            
+            # Users can see:
+            # 1. Their own availabilities (but only for leagues where they are members)
+            # 2. All availabilities for fixtures in leagues where they are captain/deputy
+            # 3. All availabilities for fixtures in leagues belonging to clubs where they are admin
+            queryset = queryset.filter(
+                (Q(player=user) & Q(fixture__league_id__in=user_leagues)) |  # Own availabilities (only if league member)
+                Q(fixture__league_id__in=captain_deputy_leagues) |  # Captain/deputy of league
+                Q(fixture__league__club_id__in=admin_clubs)  # Admin of club
+            )
+        
+        return queryset
+    
+    def get_permissions(self):
+        if self.action in ['update', 'partial_update', 'destroy']:
+            # Users can only update/delete their own availabilities
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAuthenticated()]
+    
+    def perform_create(self, serializer):
+        fixture_id = serializer.validated_data.get('fixture').id
+        player_id = serializer.validated_data.get('player_id')
+        
+        fixture = get_object_or_404(Fixture, id=fixture_id)
+        league = fixture.league
+        
+        # Check if the player is a member of the league
+        is_player_league_member = LeagueMember.objects.filter(
+            league=league, user_id=player_id
+        ).exists()
+        
+        if not is_player_league_member:
+            raise serializers.ValidationError(
+                {"player_id": "Only team members can set their availability."}
+            )
+        
+        # Check if the player is creating availability for themselves
+        if player_id != self.request.user.id:
+            # If not, check if the user is a captain, deputy, or club admin
+            
+            # Check if user is captain or deputy of the league
+            is_captain_or_deputy = (league.captain_id == self.request.user.id or 
+                                   league.deputy_id == self.request.user.id)
+            
+            # Check if user is club admin
+            is_club_admin = ClubUser.objects.filter(
+                user=self.request.user, club=league.club, is_admin=True
+            ).exists()
+            
+            if not (is_captain_or_deputy or is_club_admin):
+                raise permissions.PermissionDenied(
+                    "You can only set availability for yourself unless you are a captain, deputy, or club admin."
+                )
+        else:
+            # User is creating availability for themselves, make sure they're a league member
+            is_user_league_member = LeagueMember.objects.filter(
+                league=league, user=self.request.user
+            ).exists()
+            
+            if not is_user_league_member:
+                raise permissions.PermissionDenied(
+                    "Only team members can set their availability."
+                )
+        
+        serializer.save()
+    
+    def perform_update(self, serializer):
+        # Only allow users to update their own availabilities unless they're captain/deputy/admin
+        instance = self.get_object()
+        user = self.request.user
+        
+        if instance.player_id != user.id:
+            # Not the owner, check if user is captain, deputy, or club admin
+            league = instance.fixture.league
+            
+            # Check if user is captain or deputy
+            is_captain_or_deputy = (league.captain_id == user.id or league.deputy_id == user.id)
+            
+            # Check if user is club admin
+            is_club_admin = ClubUser.objects.filter(
+                user=user, club=league.club, is_admin=True
+            ).exists()
+            
+            if not (is_captain_or_deputy or is_club_admin):
+                raise permissions.PermissionDenied(
+                    "You can only update your own availabilities unless you are a captain, deputy, or club admin."
+                )
         
         serializer.save() 

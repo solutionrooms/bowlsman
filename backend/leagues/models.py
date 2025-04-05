@@ -101,4 +101,29 @@ class Fixture(models.Model):
         return self.for_score is not None and self.against_score is not None
     
     def __str__(self):
-        return f"{self.opponent} - {self.venue} - {self.fixture_date.strftime('%d %b %Y')}" 
+        return f"{self.opponent} - {self.venue} - {self.fixture_date.strftime('%d %b %Y')}"
+
+
+class PlayerAvailability(models.Model):
+    """
+    Tracks a player's availability for a specific fixture.
+    """
+    AVAILABILITY_CHOICES = [
+        ('available', 'Available'),
+        ('not_available', 'Not Available'),
+        ('prefer_not', 'Prefer Not')
+    ]
+    
+    fixture = models.ForeignKey(Fixture, on_delete=models.CASCADE, related_name='player_availabilities')
+    player = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='fixture_availabilities')
+    availability = models.CharField(max_length=15, choices=AVAILABILITY_CHOICES, default='available')
+    notes = models.TextField(blank=True, null=True, max_length=500, help_text="Optional notes about availability")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('fixture', 'player')
+        verbose_name_plural = 'Player availabilities'
+        
+    def __str__(self):
+        return f"{self.player.get_full_name()} - {self.get_availability_display()} for {self.fixture}" 
