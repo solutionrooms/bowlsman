@@ -39,7 +39,7 @@ instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const currentApiUrl = getApiUrl();
   
   // Set or update the baseURL
-  config.baseURL = `${currentApiUrl}/api`;
+  config.baseURL = currentApiUrl;
   
   // Only access localStorage in browser context
   if (typeof window !== 'undefined') {
@@ -59,8 +59,9 @@ instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   }
   
   if (config.url) {
-    // Remove any leading slashes
-    config.url = config.url.replace(/^\/+/, '');
+    // Remove any leading slashes and ensure api prefix
+    config.url = config.url.replace(/^\/+/, '').replace(/^api\//, '');
+    config.url = `api/${config.url}`;
     
     // Fix URLs with query parameters
     if (config.url.includes('?')) {

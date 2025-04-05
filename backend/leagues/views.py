@@ -78,14 +78,25 @@ class LeagueViewSet(viewsets.ModelViewSet):
             try:
                 logger.debug("Filtering leagues by club_id=%s", club_id)
                 club_id = int(club_id)
-                # Check if club exists
-                from users.models import Club
-                if not Club.objects.filter(id=club_id).exists():
+                
+                # Check if club exists and user has access
+                club = Club.objects.filter(id=club_id).first()
+                if not club:
                     logger.warning("Club with id=%s does not exist", club_id)
                     return League.objects.none()
+                
+                # Check if user has access to this club
+                if not user.is_staff and not ClubUser.objects.filter(user=user, club=club).exists():
+                    logger.warning("User %s does not have access to club %s", user.username, club_id)
+                    return League.objects.none()
+                
                 queryset = queryset.filter(club_id=club_id)
+                
             except (ValueError, TypeError) as e:
                 logger.error("Invalid club_id: %s - %s", club_id, str(e))
+                return League.objects.none()
+            except Exception as e:
+                logger.error("Unexpected error filtering leagues: %s", str(e))
                 return League.objects.none()
         
         # If user is not staff, only show leagues from clubs they belong to
