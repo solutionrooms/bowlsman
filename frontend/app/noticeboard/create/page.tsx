@@ -120,6 +120,18 @@ export default function CreateNoticePage() {
     }
   }, [noticeType]);
 
+  // Move the debug logging outside of JSX
+  useEffect(() => {
+    type UserClub = { id: number; is_admin: boolean; club_role?: string };
+    const userClub = currentUser?.clubs?.find(c => c.id === currentClub?.id) as UserClub | undefined;
+    console.log('Debug permissions:', {
+      isStaff: currentUser?.is_staff,
+      isAdmin: userClub?.is_admin,
+      clubRoles: userClub?.club_role,
+      clubs: currentUser?.clubs
+    });
+  }, [currentUser, currentClub]);
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       // Convert FileList to array and add to existing images
@@ -340,13 +352,6 @@ export default function CreateNoticePage() {
                   <label htmlFor="notice-type" className="block text-sm font-medium text-gray-700">
                     Notice Type
                   </label>
-                  {console.log('Debug permissions:', {
-                    isStaff: currentUser?.is_staff,
-                    isClubAdmin,
-                    clubRoles: currentUser?.clubs?.find((c: any) => c.id === currentClub?.id)?.role,
-                    userId: currentUser?.id,
-                    clubs: currentUser?.clubs
-                  })}
                   <select
                     id="notice-type"
                     name="notice-type"

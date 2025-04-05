@@ -90,15 +90,32 @@ export default function LeagueAdminPage() {
 
   const fetchClubMembers = async (clubId: number) => {
     try {
-      const response = await api.get<{user: User, is_admin: boolean}[]>(
-        `/clubs/${clubId}/members`,
-        {}
+      // Request club members from the API
+      const response = await api.get<any[]>(
+        `/clubs/${clubId}/members`
       );
-      setClubMembers(response.data.map(cu => ({
-        id: cu.user.id,
-        user: cu.user,
-        is_admin: cu.is_admin
-      })));
+      console.log('Club members API response:', response.data);
+      
+      // Map the API response to match the expected structure
+      const mappedMembers = response.data.map(member => {
+        // The API could be returning data in different formats
+        // We need to handle all possible structures
+        return {
+          id: member.id,
+          user: {
+            id: member.user_id || (member.user?.id || 0),
+            username: member.username || (member.user?.username || ''),
+            email: member.email || (member.user?.email || ''),
+            first_name: member.first_name || (member.user?.first_name || ''),
+            last_name: member.last_name || (member.user?.last_name || ''),
+            is_staff: false
+          },
+          is_admin: member.is_admin
+        };
+      });
+      
+      console.log('Mapped club members:', mappedMembers);
+      setClubMembers(mappedMembers);
     } catch (error) {
       console.error('Error fetching club members:', error);
       setError('Failed to fetch club members. Please try again.');

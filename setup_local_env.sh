@@ -60,10 +60,44 @@ echo "Setting up local Python environment..."
 echo "Installing Python dependencies..."
 python3 -m pip install -r requirements-local.txt
 
-# Ensure environment files exist
 echo "Setting up environment files..."
-cp -n backend/.env.local backend/.env
-cp -n frontend/.env.local frontend/.env
+
+# Create root .env file if it doesn't exist
+if [ ! -f .env ]; then
+    cp .env.example .env
+    echo "Created .env file in root directory"
+fi
+
+# Create .env.local for local development
+cat > .env.local << EOL
+DEPLOYMENT_MODE=local
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_WEBSOCKET_URL=ws://localhost:8000/ws
+DJANGO_DEBUG=True
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/bowlsman
+EOL
+echo "Created .env.local file in root directory"
+
+# Create .env.docker for Docker development
+cat > .env.docker << EOL
+DEPLOYMENT_MODE=docker
+NEXT_PUBLIC_API_URL=http://localhost:8010
+NEXT_PUBLIC_WEBSOCKET_URL=ws://localhost:8010/ws
+DJANGO_DEBUG=True
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend
+DATABASE_URL=postgres://postgres:postgres@db:5432/bowlsman
+EOL
+echo "Created .env.docker file in root directory"
+
+# Remove old environment files
+rm -f frontend/.env frontend/.env.local frontend/.env.docker backend/.env backend/.env.local backend/.env.docker 2>/dev/null
+
+# Create symlinks for frontend and backend
+ln -sf ../.env frontend/.env
+ln -sf ../.env backend/.env
+
+echo "Environment files setup complete"
 
 # Navigate to frontend directory and install npm dependencies
 echo "Installing frontend dependencies..."

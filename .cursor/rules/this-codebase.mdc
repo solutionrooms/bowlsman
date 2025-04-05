@@ -3,9 +3,4 @@ description: All code. All testing. All Deployment. Everything.
 globs: *
 alwaysApply: true
 ---
-
-# principles
-- only run django inside backend container. e.g. "docker compose exec backend {command}" never run it locally outside the container.
-- only run npm or any node commands inside of the frontend container. e.g. "docker compose exec frontend {command}" never run it locally outside the container.
-- The code needs to be portable to a remote server. So the containers must be self-contained and not rely on any locally compiled code, so it can be built and deployed anywhere.
-
+Project guide can be found in [CLAUDE.md](mdc:CLAUDE.md)

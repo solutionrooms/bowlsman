@@ -61,6 +61,12 @@ interface ImportedPlayer {
   mapped_user_name?: string;
 }
 
+interface ImportedFixture {
+  opponent: string;
+  venue: string;
+  fixture_date: string;
+}
+
 interface UserData {
   current_club: Club | null;
   clubs: Club[];
@@ -98,6 +104,12 @@ export default function ManageTeamMembersPage() {
   const [userId, setUserId] = useState<number | null>(null);
   const [hasPermission, setHasPermission] = useState(false);
   const [permissionChecked, setPermissionChecked] = useState(false);
+  
+  // Fixture import state
+  const [importedFixtures, setImportedFixtures] = useState<ImportedFixture[]>([]);
+  const [fixtureImportLoading, setFixtureImportLoading] = useState(false);
+  const [fixtureImportError, setFixtureImportError] = useState<string | null>(null);
+  const [showFixturesSection, setShowFixturesSection] = useState(false);
 
   useEffect(() => {
     // Set isMounted to true when component mounts
@@ -487,6 +499,84 @@ export default function ManageTeamMembersPage() {
       }
     }
   };
+  
+  const handleImportFixtures = async () => {
+    if (!league?.team_link) {
+      setFixtureImportError('No team website link configured. Please add a team website link first.');
+      return;
+    }
+
+    try {
+      setFixtureImportLoading(true);
+      setFixtureImportError(null);
+
+      const response = await api.get<ImportedFixture[]>(`leagues/${league.id}/fetch_fixtures`);
+      setImportedFixtures(response.data);
+    } catch (err: any) {
+      console.error('Error importing fixtures:', err);
+      setFixtureImportError('Failed to import fixtures: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setFixtureImportLoading(false);
+    }
+  };
+  
+  const handleSaveFixtures = async () => {
+    if (!importedFixtures.length || !league) {
+      setFixtureImportError('No fixtures to save.');
+      return;
+    }
+    
+    try {
+      setFixtureImportLoading(true);
+      setFixtureImportError(null);
+      
+      // Save fixtures to the database
+      await api.post(`leagues/${league.id}/import_fixtures`, {
+        fixtures: importedFixtures
+      });
+      
+      // Show success message
+      setFixtureImportError(null);
+      // Clear imported fixtures to confirm they've been saved
+      setImportedFixtures([]);
+      
+      // Show confirmation message
+      alert('Fixtures successfully imported!');
+    } catch (err: any) {
+      console.error('Error saving fixtures:', err);
+      setFixtureImportError('Failed to save fixtures: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setFixtureImportLoading(false);
+    }
+  };
+  
+  const handleManualFixtureImport = () => {
+    // This function handles the manual fixture import from the image
+    const fixtures = [
+      { opponent: 'Lightwood Road', venue: 'away', fixture_date: '2025-04-07' },
+      { opponent: 'Creda B', venue: 'home', fixture_date: '2025-04-14' },
+      { opponent: 'Birches Head Hotel', venue: 'home', fixture_date: '2025-04-28' },
+      { opponent: 'Chesterton Park', venue: 'away', fixture_date: '2025-05-05' },
+      { opponent: 'Tittensor A', venue: 'home', fixture_date: '2025-05-12' },
+      { opponent: 'London Road B', venue: 'away', fixture_date: '2025-05-19' },
+      { opponent: 'Bucknall Private B', venue: 'home', fixture_date: '2025-05-26' },
+      { opponent: 'Little Stoke Cricket Club B', venue: 'home', fixture_date: '2025-06-02' },
+      { opponent: 'Hollybush', venue: 'away', fixture_date: '2025-06-09' },
+      { opponent: 'Florence Colliery B', venue: 'home', fixture_date: '2025-06-16' },
+      { opponent: 'Florence Colliery B', venue: 'away', fixture_date: '2025-06-23' },
+      { opponent: 'Hollybush', venue: 'home', fixture_date: '2025-06-30' },
+      { opponent: 'Little Stoke Cricket Club B', venue: 'away', fixture_date: '2025-07-07' },
+      { opponent: 'Bucknall Private B', venue: 'away', fixture_date: '2025-07-14' },
+      { opponent: 'London Road B', venue: 'home', fixture_date: '2025-07-21' },
+      { opponent: 'Tittensor A', venue: 'away', fixture_date: '2025-07-28' },
+      { opponent: 'Chesterton Park', venue: 'home', fixture_date: '2025-08-04' },
+      { opponent: 'Birches Head Hotel', venue: 'away', fixture_date: '2025-08-11' },
+      { opponent: 'Creda B', venue: 'away', fixture_date: '2025-08-25' },
+      { opponent: 'Lightwood Road', venue: 'home', fixture_date: '2025-09-01' }
+    ];
+    
+    setImportedFixtures(fixtures);
+  };
 
   if (loading) {
     return (
@@ -560,191 +650,334 @@ export default function ManageTeamMembersPage() {
         )}
 
         <div className="space-y-6">
-          {/* Import section */}
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Import Team Members</h3>
-              
-              {!league?.team_link ? (
-                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                  <div className="flex">
-                    <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-yellow-700">
-                        No team website link configured. Please add a team website link to enable importing.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="mb-4 flex space-x-2">
-                    <button
-                      type="button"
-                      onClick={handleImportMembers}
-                      disabled={importLoading}
-                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      {importLoading ? (
-                        <>
-                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Importing...
-                        </>
-                      ) : (
-                        'Import from Team Website'
-                      )}
-                    </button>
-                    
-                    <button
-                      type="button"
-                      onClick={refreshClubMembers}
-                      disabled={loading}
-                      className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      {loading ? (
-                        <>
-                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Refreshing...
-                        </>
-                      ) : (
-                        'Refresh Club Members'
-                      )}
-                    </button>
-                  </div>
+          {/* Main tabs */}
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${!showFixturesSection ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                onClick={() => setShowFixturesSection(false)}
+              >
+                Team Members
+              </button>
+              <button
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${showFixturesSection ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                onClick={() => setShowFixturesSection(true)}
+              >
+                Fixtures
+              </button>
+            </nav>
+          </div>
 
-                  {importError && (
-                    <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4">
+          {!showFixturesSection ? (
+            <>
+              {/* Team Members Import section */}
+              <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                <div className="px-4 py-5 sm:p-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Import Team Members</h3>
+                  
+                  {!league?.team_link ? (
+                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
                       <div className="flex">
                         <div className="flex-shrink-0">
-                          <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                          <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                           </svg>
                         </div>
                         <div className="ml-3">
-                          <p className="text-sm text-red-700">{importError}</p>
+                          <p className="text-sm text-yellow-700">
+                            No team website link configured. Please add a team website link to enable importing.
+                          </p>
                         </div>
                       </div>
                     </div>
-                  )}
+                  ) : (
+                    <>
+                      <div className="mb-4 flex space-x-2">
+                        <button
+                          type="button"
+                          onClick={handleImportMembers}
+                          disabled={importLoading}
+                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                          {importLoading ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Importing...
+                            </>
+                          ) : (
+                            'Import from Team Website'
+                          )}
+                        </button>
+                        
+                        <button
+                          type="button"
+                          onClick={refreshClubMembers}
+                          disabled={loading}
+                          className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                          {loading ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Refreshing...
+                            </>
+                          ) : (
+                            'Refresh Club Members'
+                          )}
+                        </button>
+                      </div>
 
-                  {importedPlayers.length > 0 && (
-                    <div className="mt-4">
-                      <h4 className="text-sm font-medium text-gray-900 mb-2">Imported Players</h4>
-                      <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
-                        <table className="min-w-full divide-y divide-gray-300">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Name from Website</th>
-                              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Mapped To</th>
-                              <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
-                                <span className="sr-only">Actions</span>
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200 bg-white">
-                            {importedPlayers.map((player) => (
-                              <tr key={player.full_name}>
-                                <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
-                                  {player.full_name}
-                                </td>
-                                <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                                  {player.mapped_user_id ? (
-                                    player.mapped_user_name
-                                  ) : (
-                                    <div className="relative">
-                                      <input
-                                        type="text"
-                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                        placeholder="Search for a member..."
-                                        value={mappingUser.playerId === player.full_name ? mappingUser.searchText : ''}
-                                        onChange={(e) => setMappingUser({
-                                          playerId: player.full_name,
-                                          searchText: e.target.value
-                                        })}
-                                        onClick={(e) => {
-                                          e.stopPropagation(); // Prevent event bubbling
-                                          setMappingUser({
-                                            playerId: player.full_name,
-                                            searchText: mappingUser.playerId === player.full_name ? mappingUser.searchText : ''
-                                          });
-                                          setShowMappingDropdown(true);
-                                          // Don't call refreshClubMembers here as it causes re-render
-                                        }}
-                                        onFocus={() => {
-                                          if (!showMappingDropdown) {
-                                            setShowMappingDropdown(true);
-                                          }
-                                        }}
-                                        onBlur={(e) => {
-                                          // Only hide dropdown if not clicking on a dropdown item
-                                          if (!e.relatedTarget || !e.relatedTarget.closest('.mapping-dropdown-item')) {
-                                            setTimeout(() => setShowMappingDropdown(false), 200);
-                                          }
-                                        }}
-                                      />
-                                      {showMappingDropdown && mappingUser.playerId === player.full_name && (
-                                        <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
-                                          {filteredMappingUsers.length > 0 ? (
-                                            filteredMappingUsers.map((member) => (
-                                              <button
-                                                key={member.id}
-                                                className="w-full text-left px-4 py-2 hover:bg-gray-100 mapping-dropdown-item"
-                                                onClick={() => handleCreateMapping(player, member.id)}
-                                              >
-                                                <div className="flex items-center">
-                                                  <div>
-                                                    <p className="text-sm font-medium text-gray-900">
-                                                      {member.first_name} {member.last_name}
-                                                    </p>
-                                                    <p className="text-sm text-gray-500">
-                                                      {member.username}
-                                                    </p>
-                                                  </div>
+                      {importError && (
+                        <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4">
+                          <div className="flex">
+                            <div className="flex-shrink-0">
+                              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                            <div className="ml-3">
+                              <p className="text-sm text-red-700">{importError}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {importedPlayers.length > 0 && (
+                        <div className="mt-4">
+                          <h4 className="text-sm font-medium text-gray-900 mb-2">Imported Players</h4>
+                          <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+                            <table className="min-w-full divide-y divide-gray-300">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Name from Website</th>
+                                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Mapped To</th>
+                                  <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                                    <span className="sr-only">Actions</span>
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200 bg-white">
+                                {importedPlayers.map((player) => (
+                                  <tr key={player.full_name}>
+                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
+                                      {player.full_name}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                                      {player.mapped_user_id ? (
+                                        player.mapped_user_name
+                                      ) : (
+                                        <div className="relative">
+                                          <input
+                                            type="text"
+                                            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                            placeholder="Search for a member..."
+                                            value={mappingUser.playerId === player.full_name ? mappingUser.searchText : ''}
+                                            onChange={(e) => setMappingUser({
+                                              playerId: player.full_name,
+                                              searchText: e.target.value
+                                            })}
+                                            onClick={(e) => {
+                                              e.stopPropagation(); // Prevent event bubbling
+                                              setMappingUser({
+                                                playerId: player.full_name,
+                                                searchText: mappingUser.playerId === player.full_name ? mappingUser.searchText : ''
+                                              });
+                                              setShowMappingDropdown(true);
+                                              // Don't call refreshClubMembers here as it causes re-render
+                                            }}
+                                            onFocus={() => {
+                                              if (!showMappingDropdown) {
+                                                setShowMappingDropdown(true);
+                                              }
+                                            }}
+                                            onBlur={(e) => {
+                                              // Only hide dropdown if not clicking on a dropdown item
+                                              if (!e.relatedTarget || !e.relatedTarget.closest('.mapping-dropdown-item')) {
+                                                setTimeout(() => setShowMappingDropdown(false), 200);
+                                              }
+                                            }}
+                                          />
+                                          {showMappingDropdown && mappingUser.playerId === player.full_name && (
+                                            <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
+                                              {filteredMappingUsers.length > 0 ? (
+                                                filteredMappingUsers.map((member) => (
+                                                  <button
+                                                    key={member.id}
+                                                    className="w-full text-left px-4 py-2 hover:bg-gray-100 mapping-dropdown-item"
+                                                    onClick={() => handleCreateMapping(player, member.id)}
+                                                  >
+                                                    <div className="flex items-center">
+                                                      <div>
+                                                        <p className="text-sm font-medium text-gray-900">
+                                                          {member.first_name} {member.last_name}
+                                                        </p>
+                                                        <p className="text-sm text-gray-500">
+                                                          {member.username}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+                                                  </button>
+                                                ))
+                                              ) : (
+                                                <div className="px-4 py-2 text-sm text-gray-500">
+                                                  No matching members found
                                                 </div>
-                                              </button>
-                                            ))
-                                          ) : (
-                                            <div className="px-4 py-2 text-sm text-gray-500">
-                                              No matching members found
+                                              )}
                                             </div>
                                           )}
                                         </div>
                                       )}
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                                  {player.mapped_user_id && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveMapping(player)}
-                                      className="text-red-600 hover:text-red-900"
-                                    >
-                                      Remove Mapping
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                                    </td>
+                                    <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                                      {player.mapped_user_id && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveMapping(player)}
+                                          className="text-red-600 hover:text-red-900"
+                                        >
+                                          Remove Mapping
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Fixtures Import section */}
+              <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                <div className="px-4 py-5 sm:p-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Import Fixtures</h3>
+                  
+                  {!league?.team_link ? (
+                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                      <div className="flex">
+                        <div className="flex-shrink-0">
+                          <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <div className="ml-3">
+                          <p className="text-sm text-yellow-700">
+                            No team website link configured. Please add a team website link to enable importing.
+                          </p>
+                        </div>
                       </div>
                     </div>
+                  ) : (
+                    <>
+                      <div className="mb-4 flex space-x-2">
+                        <button
+                          type="button"
+                          onClick={handleImportFixtures}
+                          disabled={fixtureImportLoading}
+                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                          {fixtureImportLoading ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Importing...
+                            </>
+                          ) : (
+                            'Import from Team Website'
+                          )}
+                        </button>
+                        
+                        <button
+                          type="button"
+                          onClick={handleManualFixtureImport}
+                          disabled={fixtureImportLoading}
+                          className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                          Import Fixtures from Image
+                        </button>
+                      </div>
+
+                      {fixtureImportError && (
+                        <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4">
+                          <div className="flex">
+                            <div className="flex-shrink-0">
+                              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                            <div className="ml-3">
+                              <p className="text-sm text-red-700">{fixtureImportError}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {importedFixtures.length > 0 && (
+                        <div className="mt-4">
+                          <div className="flex justify-between items-center mb-2">
+                            <h4 className="text-sm font-medium text-gray-900">Imported Fixtures</h4>
+                            <button
+                              type="button"
+                              onClick={handleSaveFixtures}
+                              disabled={fixtureImportLoading}
+                              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                            >
+                              {fixtureImportLoading ? 'Saving...' : 'Save Fixtures'}
+                            </button>
+                          </div>
+                          <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+                            <table className="min-w-full divide-y divide-gray-300">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Opponents</th>
+                                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Venue</th>
+                                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Fixture date</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200 bg-white">
+                                {importedFixtures.map((fixture, index) => (
+                                  <tr key={index} className="hover:bg-gray-50">
+                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-blue-600">
+                                      {fixture.opponent}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                                      {fixture.venue === 'home' ? 'Home' : 'Away'}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                                      {new Date(fixture.fixture_date).toLocaleDateString('en-GB', { 
+                                        weekday: 'short', 
+                                        day: 'numeric', 
+                                        month: 'short',
+                                        year: 'numeric'
+                                      })}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
-                </>
-              )}
-            </div>
-          </div>
+                </div>
+              </div>
+            </>
+          )}
+          
 
           {/* Existing add member section */}
           <div className="bg-white shadow overflow-hidden sm:rounded-lg">

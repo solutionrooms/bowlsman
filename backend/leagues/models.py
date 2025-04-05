@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from users.models import Club
+from datetime import date
 
 class League(models.Model):
     """
@@ -65,4 +66,39 @@ class PlayerNameMapping(models.Model):
         ordering = ['roster_full_name']
     
     def __str__(self):
-        return f"Mapping: {self.roster_full_name} -> {self.user.get_full_name()} in {self.league.name}" 
+        return f"Mapping: {self.roster_full_name} -> {self.user.get_full_name()} in {self.league.name}"
+
+class Fixture(models.Model):
+    """
+    Represents a match fixture for a league.
+    """
+    VENUE_CHOICES = [
+        ('home', 'Home'),
+        ('away', 'Away'),
+    ]
+
+    league = models.ForeignKey(League, on_delete=models.CASCADE, related_name='fixtures')
+    opponent = models.CharField(max_length=100)
+    venue = models.CharField(max_length=10, choices=VENUE_CHOICES)
+    fixture_date = models.DateField()
+    for_score = models.IntegerField(null=True, blank=True)
+    against_score = models.IntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['fixture_date']
+        unique_together = ('league', 'opponent', 'fixture_date')
+    
+    @property
+    def is_upcoming(self):
+        """Check if fixture is upcoming (today or in the future)"""
+        return self.fixture_date >= date.today()
+    
+    @property
+    def is_completed(self):
+        """Check if fixture has been completed (has scores)"""
+        return self.for_score is not None and self.against_score is not None
+    
+    def __str__(self):
+        return f"{self.opponent} - {self.venue} - {self.fixture_date.strftime('%d %b %Y')}" 

@@ -121,7 +121,7 @@ export default function ManageClubs() {
                 <p className="text-gray-500 mb-4">{club.address || 'No address provided'}</p>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-500">
-                    {club.member_count} {club.member_count === 1 ? 'member' : 'members'}
+                    {club.member_count ?? 0} {(club.member_count ?? 0) === 1 ? 'member' : 'members'}
                   </span>
                   {currentClub?.id === club.id && (
                     <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">Current</span>

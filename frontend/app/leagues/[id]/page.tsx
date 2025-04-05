@@ -8,6 +8,17 @@ import Navigation from '../../components/Navigation';
 import PageHeading from '../../components/PageHeading';
 import { canManageTeam } from '../../../src/utils/permissions';
 
+interface Fixture {
+  id: number;
+  opponent: string;
+  venue: string;
+  fixture_date: string;
+  for_score: number | null;
+  against_score: number | null;
+  is_upcoming: boolean;
+  is_completed: boolean;
+}
+
 interface League {
   id: number;
   name: string;
@@ -31,6 +42,8 @@ interface League {
   league_table_link: string | null;
   team_link: string | null;
   members_count: number;
+  upcoming_fixtures_count: number;
+  upcoming_fixtures: Fixture[];
   members: {
     id: number;
     user: {
@@ -348,6 +361,73 @@ export default function TeamPage() {
                   <p className="text-sm text-gray-500">No members found</p>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* Fixtures Section */}
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg mt-6">
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Upcoming Fixtures</h3>
+                {canManage && (
+                  <Link
+                    href={`/leagues/${league.id}/members/manage`}
+                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-600 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Manage Team
+                  </Link>
+                )}
+              </div>
+              
+              {league.upcoming_fixtures && league.upcoming_fixtures.length > 0 ? (
+                <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+                  <table className="min-w-full divide-y divide-gray-300">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Opponents</th>
+                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Venue</th>
+                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Fixture date</th>
+                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">For</th>
+                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Agst</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {league.upcoming_fixtures.map((fixture) => (
+                        <tr key={fixture.id} className="hover:bg-gray-50">
+                          <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-blue-600">
+                            {fixture.opponent}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                            {fixture.venue === 'home' ? 'Home' : 'Away'}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                            {new Date(fixture.fixture_date).toLocaleDateString('en-GB', { 
+                              weekday: 'short', 
+                              day: 'numeric', 
+                              month: 'short' 
+                            })}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                            {fixture.for_score !== null ? fixture.for_score : '-'}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                            {fixture.against_score !== null ? fixture.against_score : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-sm text-gray-500">No upcoming fixtures found</p>
+                  {canManage && (
+                    <p className="mt-2 text-sm text-gray-500">
+                      Go to Team Management to import fixtures from the team website
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -12,7 +12,7 @@ interface Club {
   name: string;
   address?: string;
   created_at: string;
-  member_count?: number;
+  member_count: number;
 }
 
 interface ClubUser {
@@ -27,6 +27,7 @@ interface ClubUser {
     id: number;
     username: string;
     display_name: string;
+    club_role?: string;
   };
 }
 
@@ -45,6 +46,7 @@ interface User {
     name: string;
     is_admin: boolean;
     last_login_at: string | null;
+    club_role?: string;
   }[];
 }
 
@@ -89,24 +91,34 @@ interface AuthState {
 
 interface SocialBowlParticipant {
   id: number;
-  user: User;
-  joined_at: string;
+  social_bowl: number;
+  user: number;
+  user_details: {
+    id: number;
+    username: string;
+    display_name: string;
+    club_role?: string;
+  };
+  status: 'confirmed' | 'pending' | 'cancelled';
+  created_at: string;
 }
 
 interface SocialBowl {
   id: number;
-  title: string;
+  name: string;
   description: string;
   date: string;
   time: string;
   location: string;
+  max_participants: number;
+  current_participants: number;
+  status: 'open' | 'full' | 'cancelled' | 'completed';
+  creator: number;
+  creator_name: string;
   club: number;
-  created_by: User;
+  club_name: string;
   created_at: string;
-  updated_at: string;
   participants: SocialBowlParticipant[];
-  participant_count: number;
-  is_joined: boolean;
 }
 
 interface PlayerNameMapping {
@@ -144,4 +156,55 @@ interface CompetitionType {
   id: number;
   name: string;
   description: string;
+}
+
+interface UserDetails {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  avatar?: string;
+  club_role?: string;
+  display_name: string;
+}
+
+interface ChatMember {
+  id: number;
+  chat: number;
+  user: number;
+  user_details: UserDetails;
+  is_admin: boolean;
+  created_at: string;
+  last_read_at: string | null;
+}
+
+interface Chat {
+  id: number;
+  name: string;
+  chat_type: 'direct' | 'group';
+  created_at: string;
+  updated_at: string;
+  last_message?: string;
+  last_message_at?: string;
+  members: ChatMember[];
+  unread_count: number;
+}
+
+interface ClubMember {
+  id: number;
+  user: number;
+  club: number;
+  club_name: string;
+  is_admin: boolean;
+  club_role?: string;
+  created_at: string;
+  last_login_at: string | null;
+  user_details?: {
+    id: number;
+    username: string;
+    display_name: string;
+    club_role?: string;
+  };
 }

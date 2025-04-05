@@ -66,12 +66,22 @@ interface User {
 
 interface UserResponse {
   user: User;
-  current_club: any;
+  clubs: Club[];
+  current_club: Club | null;
+}
+
+interface EnrichedMember extends ClubMember {
+  user_details: {
+    id: number;
+    username: string;
+    display_name: string;
+    club_role?: string;
+  };
 }
 
 export default function ClubDetail({ params }: ClubDetailProps) {
   const [club, setClub] = useState<Club | null>(null);
-  const [members, setMembers] = useState<ClubMember[]>([]);
+  const [members, setMembers] = useState<EnrichedMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newPlayerName, setNewPlayerName] = useState('');
@@ -146,24 +156,18 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('First member raw data:', membersResponse.data[0]);
         
         // Process the member data - the API now returns a more complete format
-        const enrichedMembers = membersResponse.data.map((member: any) => {
-          // The response already includes all the data we need: is_admin, club_role, and user_details
-          return {
-            id: member.id,
-            user: member.user,
-            username: member.user_details?.username || '',
-            first_name: member.user_details?.display_name?.split(' ')[0] || '',
-            last_name: member.user_details?.display_name?.split(' ').slice(1).join(' ') || '',
-            email: member.email || '',
-            is_admin: member.is_admin || false,
-            club_role: member.club_role || '',
-            user_details: member.user_details || {
-              id: member.user,
-              username: '',
-              display_name: ''
-            }
-          };
-        });
+        const enrichedMembers = membersResponse.data.map((member: any) => ({
+          ...member,
+          club: club!,  // We know club is not null here because we're inside the club fetch success block
+          club_name: club!.name,
+          created_at: member.created_at || new Date().toISOString(),
+          last_login_at: member.last_login_at || null,
+          user_details: member.user_details || {
+            id: member.user,
+            username: member.username,
+            display_name: member.username
+          }
+        })) as EnrichedMember[];
         
         console.log('Enriched members:', enrichedMembers);
         
@@ -174,37 +178,27 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         }
         
         // Sort members: admins first, then roles, then alphabetically
-        const sortedMembers = [...enrichedMembers].sort((a, b) => {
-          // Admins come first
-          if (a.is_admin && !b.is_admin) return -1;
-          if (!a.is_admin && b.is_admin) return 1;
-          
-          // Then members with roles
-          const aHasRole = a.club_role && a.club_role !== '';
-          const bHasRole = b.club_role && b.club_role !== '';
-          if (aHasRole && !bHasRole) return -1;
-          if (!aHasRole && bHasRole) return 1;
-          
-          // If both have roles, sort by role importance
-          if (aHasRole && bHasRole) {
-            const roleOrder: Record<string, number> = {
-              'President': 1,
-              'Vice-President': 2,
-              'Treasurer': 3,
-              'Secretary': 4
-            };
-            const aRoleOrder = a.club_role && roleOrder[a.club_role] || 99;
-            const bRoleOrder = b.club_role && roleOrder[b.club_role] || 99;
-            if (aRoleOrder !== bRoleOrder) {
-              return aRoleOrder - bRoleOrder;
+        const sortedMembers = membersResponse.data
+          .map((member: any) => ({
+            ...member,
+            user_details: member.user_details || {
+              id: member.user,
+              username: member.username,
+              display_name: member.username
             }
-          }
-          
-          // Finally, sort alphabetically by display name
-          const aName = a.user_details?.display_name || a.username || '';
-          const bName = b.user_details?.display_name || b.username || '';
-          return aName.localeCompare(bName);
-        });
+          }))
+          .sort((a: EnrichedMember, b: EnrichedMember) => {
+            // Sort by admin status first
+            if (a.is_admin !== b.is_admin) {
+              return a.is_admin ? -1 : 1;
+            }
+            // Then by club role (if exists)
+            if (a.club_role !== b.club_role) {
+              return (a.club_role || '').localeCompare(b.club_role || '');
+            }
+            // Finally by display name
+            return (a.user_details?.display_name || '').localeCompare(b.user_details?.display_name || '');
+          }) as EnrichedMember[];
         
         console.log('Club members (mapped, enriched, and sorted):', sortedMembers);
         
@@ -212,7 +206,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('VERIFY INITIAL: Members with roles:', sortedMembers.filter(m => m.club_role).map(m => `${m.user_details?.display_name || m.id}: ${m.club_role}`));
         console.log('VERIFY INITIAL: Members with admin:', sortedMembers.filter(m => m.is_admin).map(m => `${m.user_details?.display_name || m.id}: admin=${m.is_admin}`));
         
-        setMembers(sortedMembers as ClubMember[]);
+        setMembers(sortedMembers);
         
         // Fetch all users that can be added to the club (non-members)
         const usersResponse = await api.get<User[]>('/users/', {
@@ -223,9 +217,8 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         console.log('All users fetched:', usersResponse.data);
         
         // Filter out users who are already members
-        const memberUserIds = new Set(enrichedMembers.map((m: ClubMember) => {
-          if (!m.user) return m.id; // Fallback to member ID if user is undefined
-          return typeof m.user === 'number' ? m.user : (m.user as any).id;
+        const memberUserIds = new Set(enrichedMembers.map((m: EnrichedMember) => {
+          return m.user;
         }));
         const availableUsers = usersResponse.data.filter((user: User) => !memberUserIds.has(user.id));
         
@@ -251,7 +244,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
     }
 
     // Get IDs of users already in the club
-    const existingUserIds = new Set(members.map((m: ClubMember) => 
+    const existingUserIds = new Set(members.map((m: EnrichedMember) => 
       typeof m.user === 'number' ? m.user : (m.user as any).id
     ));
     
@@ -310,24 +303,18 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       console.log('Members data from API:', response.data);
       
       // Process the member data - the API now returns a more complete format
-      const enrichedMembers = response.data.map((member: any) => {
-        // The response already includes all the data we need: is_admin, club_role, and user_details
-        return {
-          id: member.id,
-          user: member.user,
-          username: member.user_details?.username || '',
-          first_name: member.user_details?.display_name?.split(' ')[0] || '',
-          last_name: member.user_details?.display_name?.split(' ').slice(1).join(' ') || '',
-          email: member.email || '',
-          is_admin: member.is_admin || false,
-          club_role: member.club_role || '',
-          user_details: member.user_details || {
-            id: member.user,
-            username: '',
-            display_name: ''
-          }
-        };
-      });
+      const enrichedMembers = response.data.map((member: any) => ({
+        ...member,
+        club: club!,  // We know club is not null here because we check it at the start of refreshMembers
+        club_name: club!.name,
+        created_at: member.created_at || new Date().toISOString(),
+        last_login_at: member.last_login_at || null,
+        user_details: member.user_details || {
+          id: member.user,
+          username: member.username,
+          display_name: member.username
+        }
+      })) as EnrichedMember[];
       
       console.log('Enriched members:', enrichedMembers);
       
@@ -338,37 +325,27 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       }
       
       // Sort members: admins first, then roles, then alphabetically
-      const sortedMembers = [...enrichedMembers].sort((a, b) => {
-        // Admins come first
-        if (a.is_admin && !b.is_admin) return -1;
-        if (!a.is_admin && b.is_admin) return 1;
-        
-        // Then members with roles
-        const aHasRole = a.club_role && a.club_role !== '';
-        const bHasRole = b.club_role && b.club_role !== '';
-        if (aHasRole && !bHasRole) return -1;
-        if (!aHasRole && bHasRole) return 1;
-        
-        // If both have roles, sort by role importance
-        if (aHasRole && bHasRole) {
-          const roleOrder: Record<string, number> = {
-            'President': 1,
-            'Vice-President': 2,
-            'Treasurer': 3,
-            'Secretary': 4
-          };
-          const aRoleOrder = a.club_role && roleOrder[a.club_role] || 99;
-          const bRoleOrder = b.club_role && roleOrder[b.club_role] || 99;
-          if (aRoleOrder !== bRoleOrder) {
-            return aRoleOrder - bRoleOrder;
+      const sortedMembers = response.data
+        .map((member: any) => ({
+          ...member,
+          user_details: member.user_details || {
+            id: member.user,
+            username: member.username,
+            display_name: member.username
           }
-        }
-        
-        // Finally, sort alphabetically by display name
-        const aName = a.user_details?.display_name || a.username || '';
-        const bName = b.user_details?.display_name || b.username || '';
-        return aName.localeCompare(bName);
-      });
+        }))
+        .sort((a: EnrichedMember, b: EnrichedMember) => {
+          // Sort by admin status first
+          if (a.is_admin !== b.is_admin) {
+            return a.is_admin ? -1 : 1;
+          }
+          // Then by club role (if exists)
+          if (a.club_role !== b.club_role) {
+            return (a.club_role || '').localeCompare(b.club_role || '');
+          }
+          // Finally by display name
+          return (a.user_details?.display_name || '').localeCompare(b.user_details?.display_name || '');
+        }) as EnrichedMember[];
       
       console.log('Sorted members before setState:', sortedMembers);
       
@@ -376,8 +353,8 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       const freshSortedMembers = JSON.parse(JSON.stringify(sortedMembers));
       
       // Verify club roles in the final data
-      console.log('VERIFY: Members with roles:', freshSortedMembers.filter(m => m.club_role).map(m => `${m.user_details?.display_name || m.id}: ${m.club_role}`));
-      console.log('VERIFY: Members with admin:', freshSortedMembers.filter(m => m.is_admin).map(m => `${m.user_details?.display_name || m.id}: admin=${m.is_admin}`));
+      console.log('VERIFY: Members with roles:', freshSortedMembers.filter((m: EnrichedMember) => m.club_role).map((m: EnrichedMember) => `${m.user_details?.display_name || m.id}: ${m.club_role}`));
+      console.log('VERIFY: Members with admin:', freshSortedMembers.filter((m: EnrichedMember) => m.is_admin).map((m: EnrichedMember) => `${m.user_details?.display_name || m.id}: admin=${m.is_admin}`));
       
       setMembers(freshSortedMembers);
       console.log('Members state set with sorted members:', freshSortedMembers);
@@ -389,9 +366,8 @@ export default function ClubDetail({ params }: ClubDetailProps) {
       });
       
       // Filter out users who are already members
-      const memberUserIds = new Set(enrichedMembers.map((m: ClubMember) => {
-        if (!m.user) return m.id; // Fallback to member ID if user is undefined
-        return typeof m.user === 'number' ? m.user : (m.user as any).id;
+      const memberUserIds = new Set(enrichedMembers.map((m: EnrichedMember) => {
+        return m.user;
       }));
       const availableUsers = usersResponse.data.filter((user: User) => !memberUserIds.has(user.id));
       
@@ -531,7 +507,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
     }
   };
 
-  const handleToggleAdmin = async (member: ClubMember) => {
+  const handleToggleAdmin = async (member: EnrichedMember) => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -639,7 +615,7 @@ export default function ClubDetail({ params }: ClubDetailProps) {
     }
   };
 
-  const handleUpdateClubRole = async (member: ClubMember, newRole: string) => {
+  const handleUpdateClubRole = async (member: EnrichedMember, newRole: string) => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -818,14 +794,6 @@ export default function ClubDetail({ params }: ClubDetailProps) {
           </div>
           
           <div className="mt-4 space-y-4" key={`main-member-list-${renderKey}`}>
-            {/* Debug info */}
-            {console.log('Rendering member list with:', members.map(m => ({ 
-              id: m.id, 
-              name: m.user_details?.display_name || `User ${m.user}`,
-              is_admin: m.is_admin,
-              club_role: m.club_role
-            })))}
-            
             {members.map(member => {
               console.log(`Rendering member ${member.id}:`, { 
                 name: member.user_details?.display_name || `User ${member.user}`,

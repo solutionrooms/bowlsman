@@ -2,6 +2,14 @@
 
 ## Deployment Modes
 
+Important: 
+- Use `local` mode unless the prompt is asking for docker mode
+- when using `local` mode all python commands must be run inside bowlshub conda env `conda activate bowlshub`
+- when using `local` mode you can see frontend and backend logs in
+- - frontend : frontend/frontend_local.log
+- - backend : backend/backend_local.log
+
+
 The project supports two deployment modes:
 - `local`: Run components directly on host machine (faster for development)
 - `docker`: Run everything in Docker containers (consistent environment)

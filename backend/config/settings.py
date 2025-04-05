@@ -83,7 +83,7 @@ if DEPLOYMENT_MODE == 'docker':
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.environ.get('POSTGRES_DB', 'webapp2'),
+            'NAME': os.environ.get('POSTGRES_DB', 'bowlsman_local'),  # Changed default from webapp2
             'USER': os.environ.get('POSTGRES_USER', 'postgres'),
             'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
             'HOST': 'bowlshub-postgres',  # Docker service name
@@ -189,6 +189,10 @@ LOGGING = {
         'users': {
             'handlers': ['console'],
             'level': 'DEBUG',  # Changed from INFO to DEBUG
+        },
+        'leagues': {
+            'handlers': ['console'],
+            'level': 'DEBUG',  # Added for leagues app
         },
         'django.request': {
             'handlers': ['console'],

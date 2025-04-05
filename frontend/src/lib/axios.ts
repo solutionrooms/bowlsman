@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { InternalAxiosRequestConfig, AxiosHeaders } from "axios";
 
 // Function to get the API URL based on deployment mode
 export const getApiUrl = () => {
@@ -8,42 +8,49 @@ export const getApiUrl = () => {
     return nextDataUrl;
   }
   
+  // Always use environment variable if available
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  
   // Check deployment mode - defaults to local if not specified
   const deploymentMode = process.env.DEPLOYMENT_MODE || 'local';
   
   // Choose API URL based on deployment mode
-  let apiBaseUrl;
-  if (deploymentMode === 'local') {
-    // Local development - direct to Django's default port
-    apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  } else if (deploymentMode === 'docker') {
-    // Docker deployment - use the mapped port
-    apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010';
-  } else {
-    // Production or other environments - use environment variable
-    apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.bowlshub.fridaydigital.co.uk';
+  switch (deploymentMode) {
+    case 'local':
+      return 'http://localhost:8000';
+    case 'docker':
+      return 'http://localhost:8010';
+    default:
+      return 'https://api.bowlshub.fridaydigital.co.uk';
   }
-  
-  return apiBaseUrl;
 };
 
-const apiUrl = getApiUrl();
-
-// Create axios instance with the API URL
+// Create axios instance with dynamic baseURL
 const instance = axios.create({
-  baseURL: apiUrl,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-instance.interceptors.request.use((config) => {
+instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  // Get the current API URL for each request
+  const currentApiUrl = getApiUrl();
+  
+  // Set or update the baseURL
+  config.baseURL = `${currentApiUrl}/api`;
+  
   // Only access localStorage in browser context
   if (typeof window !== 'undefined') {
     try {
       const token = localStorage.getItem("token");
-      if (token && config.headers) {
-        config.headers.Authorization = `Token ${token}`;
+      if (token) {
+        // Ensure headers exist and are of type AxiosHeaders
+        if (!config.headers) {
+          config.headers = new AxiosHeaders();
+        }
+        config.headers.set('Authorization', `Token ${token}`);
       }
     } catch (e) {
       // Silently handle localStorage errors
@@ -51,26 +58,9 @@ instance.interceptors.request.use((config) => {
     }
   }
   
-  // Ensure config.baseURL is set
-  if (!config.baseURL) {
-    config.baseURL = apiUrl;
-  }
-  
-  // If data is FormData, remove Content-Type header to let browser set it with boundary
-  if (config.data instanceof FormData) {
-    if (config.headers) {
-      delete config.headers['Content-Type'];
-    }
-  }
-  
   if (config.url) {
     // Remove any leading slashes
     config.url = config.url.replace(/^\/+/, '');
-    
-    // Ensure api prefix without duplication
-    if (!config.url.startsWith('api/')) {
-      config.url = `api/${config.url}`;
-    }
     
     // Fix URLs with query parameters
     if (config.url.includes('?')) {

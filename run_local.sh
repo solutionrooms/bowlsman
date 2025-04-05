@@ -50,9 +50,42 @@ check_conda() {
   exit 1
 }
 
-# Kill existing tmux session if it exists
+# Setup log directories
+setup_logs() {
+  # Create log directories if they don't exist
+  mkdir -p "${SCRIPT_DIR}/backend"
+  mkdir -p "${SCRIPT_DIR}/frontend"
+  
+  # Create or truncate log files with proper permissions
+  touch "${SCRIPT_DIR}/backend/backend_local.log"
+  touch "${SCRIPT_DIR}/frontend/frontend_local.log"
+  
+  # Set permissions (readable/writable by user and group)
+  chmod 664 "${SCRIPT_DIR}/backend/backend_local.log"
+  chmod 664 "${SCRIPT_DIR}/frontend/frontend_local.log"
+}
+
+# Kill existing tmux sessions and processes
 cleanup_tmux() {
-  tmux kill-session -t bowlsman 2>/dev/null
+  echo "Cleaning up existing tmux sessions..."
+  
+  # Kill the main bowlsman session if it exists
+  if tmux has-session -t bowlsman 2>/dev/null; then
+    echo "Killing existing bowlsman tmux session..."
+    tmux kill-session -t bowlsman
+  fi
+  
+  # Kill any zombie frontend or backend processes
+  echo "Checking for lingering processes..."
+  
+  # Kill any running Next.js dev servers
+  pkill -f "next dev" || true
+  
+  # Kill any running Django dev servers
+  pkill -f "python manage.py runserver" || true
+  
+  # Small delay to ensure processes are cleaned up
+  sleep 1
 }
 
 # Create a new tmux session and run a command in it
@@ -61,14 +94,15 @@ run_in_tmux() {
   shift
   local command="cd ${SCRIPT_DIR} && $*"
   
+  # Always try to create a new session
   if ! tmux has-session -t bowlsman 2>/dev/null; then
-    # Create the first window with a shell
     tmux new-session -d -s bowlsman -n "$window_name"
     tmux send-keys -t bowlsman:0 "$command" Enter
+    tmux pipe-pane -t bowlsman:0 "cat >> frontend/frontend_local.log"
   else
-    # Create additional windows
     tmux new-window -t bowlsman -n "$window_name"
     tmux send-keys -t bowlsman:"$window_name" "$command" Enter
+    tmux pipe-pane -t bowlsman:"$window_name" "cat >> frontend/frontend_local.log"
   fi
 }
 
@@ -84,13 +118,32 @@ run_backend() {
   if ! tmux has-session -t bowlsman 2>/dev/null; then
     tmux new-session -d -s bowlsman -n "backend"
     tmux send-keys -t bowlsman:0 "$conda_cmd" Enter
+    # Setup logging for the pane
+    tmux pipe-pane -t bowlsman:0 "cat >> backend/backend_local.log"
   else
     tmux new-window -t bowlsman -n "backend"
     tmux send-keys -t bowlsman:"backend" "$conda_cmd" Enter
+    # Setup logging for the new pane
+    tmux pipe-pane -t bowlsman:"backend" "cat >> backend/backend_local.log"
   fi
 }
 
-# Verify PostgreSQL is running locally
+# Clean up any existing environment variables that might override .env
+cleanup_env() {
+  echo "Cleaning up environment variables..."
+  unset NEXT_PUBLIC_API_URL
+  unset NEXT_PUBLIC_WEBSOCKET_URL
+  unset DEPLOYMENT_MODE
+}
+
+# Set up environment
+echo "Setting up environment for local development..."
+cleanup_env
+cp -f .env.local .env
+ln -sf ../.env frontend/.env
+ln -sf ../.env backend/.env
+
+# Check if PostgreSQL is running locally
 if ! check_postgres; then
   echo "ERROR: Local PostgreSQL instance is not running."
   echo "Please start your PostgreSQL service and try again."
@@ -110,47 +163,37 @@ if ! psql -h localhost -U postgres -lqt | cut -d \| -f 1 | grep -qw $DB_NAME; th
   }
 fi
 
-# Ask user which components to start
-echo "Which components would you like to start?"
-echo "1. Frontend only"
-echo "2. Backend only"
-echo "3. Both frontend and backend"
-read -p "Enter your choice (1-3): " choice
-
-# Clean up any existing tmux session
+# Clean up any existing tmux sessions BEFORE setting up logs
 cleanup_tmux
 
-case $choice in
-  1)
-    echo "Starting frontend..."
-    run_in_tmux "frontend" "cd frontend && npm run dev"
-    ;;
-  2)
-    echo "Starting backend..."
-    (cd backend && cp -n .env.local .env)
-    run_backend
-    ;;
-  3)
-    echo "Starting both frontend and backend..."
-    (cd backend && cp -n .env.local .env)
-    run_backend
-    run_in_tmux "frontend" "cd frontend && npm run dev"
-    ;;
-  *)
-    echo "Invalid choice. Exiting."
-    exit 1
-    ;;
-esac
+# Setup log directories
+setup_logs
 
-# Automatically attach to the tmux session
+# Start both services
+echo "Starting backend and frontend services..."
+run_backend
+run_in_tmux "frontend" "cd frontend && npm run dev"
+
+# Print useful information
 echo ""
-echo "Attaching to tmux session 'bowlsman'"
-echo "Use these commands to navigate:"
+echo "Services have been started in tmux session 'bowlsman'"
+echo ""
+echo "Access your services at:"
+echo "  Frontend: http://localhost:3000"
+echo "  Backend API: http://localhost:8000"
+echo "  API Docs: http://localhost:8000/api/schema/swagger-ui/"
+echo ""
+echo "Useful tmux commands:"
+echo "  tmux attach -t bowlsman     - Attach to the tmux session"
+echo "  tmux ls                     - List running tmux sessions"
+echo "  tmux kill-session -t bowlsman  - Kill all services when done"
+echo ""
+echo "Once attached, you can:"
 echo "  Ctrl+B then N              - Switch to next window"
 echo "  Ctrl+B then P              - Switch to previous window"
 echo "  Ctrl+B then D              - Detach from tmux session"
-echo "  tmux kill-session -t bowlsman  - Kill all services when done"
 echo ""
-echo "Attaching to session in 3 seconds..."
-sleep 3
-exec tmux attach -t bowlsman
+echo "View logs at:"
+echo "  Backend: tail -f backend/backend_local.log"
+echo "  Frontend: tail -f frontend/frontend_local.log"
+echo ""

@@ -2,10 +2,11 @@
 
 # Script to run the Bowlsman project in Docker mode
 
-# Setup environment files for Docker mode
-echo "Setting up Docker environment files..."
-cp -n backend/.env.docker backend/.env
-cp -n frontend/.env.docker frontend/.env
+# Set up environment
+echo "Setting up environment for Docker development..."
+cp -f .env.docker .env
+ln -sf ../.env frontend/.env
+ln -sf ../.env backend/.env
 
 # Set environment variables for Docker
 export DEPLOYMENT_MODE=docker

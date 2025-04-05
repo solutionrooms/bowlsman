@@ -17,6 +17,33 @@ A full-stack application with:
 docker network create shared_network
 ```
 
+## Environment Configuration
+
+The project uses a single `.env` file in the root directory for all environment variables. This file is used by both the frontend and backend services.
+
+1. Copy the example environment file:
+```bash
+cp .env.example .env
+```
+
+2. Edit the `.env` file and set your configuration:
+- `DEPLOYMENT_MODE`: Set to `local` for local development or `docker` for containerized development
+- Frontend variables (prefixed with `NEXT_PUBLIC_`)
+- Backend variables (Django and database configuration)
+- API keys and secrets
+
+For different environments, you can maintain separate files:
+- `.env.local` - Local development settings
+- `.env.docker` - Docker development settings
+- `.env.prod` - Production settings
+
+The environment variables control:
+- Database connection details
+- Frontend API endpoint URLs
+- Email configuration
+- External API keys
+- Authentication settings
+
 ## Initial Setup
 
 For the easiest setup, run:

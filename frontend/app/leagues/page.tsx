@@ -116,8 +116,14 @@ export default function LeaguesPage() {
           setIsAdmin(isClubAdmin);
           
           // Get leagues for the current club
-          const leaguesResponse = await api.get<League[]>(`leagues?club_id=${current_club.id}`);
-          setLeagues(leaguesResponse.data);
+          try {
+            const leaguesResponse = await api.get<League[]>(`leagues?club_id=${current_club.id}`);
+            setLeagues(leaguesResponse.data);
+          } catch (err) {
+            console.error('Error fetching leagues:', err);
+            setError('Unable to load leagues for this club. Please try again later.');
+            setLeagues([]);
+          }
         }
         
         // Check if user is staff
@@ -165,8 +171,14 @@ export default function LeaguesPage() {
         setIsAdmin(selectedClub.is_admin);
         
         // Get leagues for the selected club
-        const leaguesResponse = await api.get<League[]>(`leagues?club_id=${clubId}`);
-        setLeagues(leaguesResponse.data);
+        try {
+          const leaguesResponse = await api.get<League[]>(`leagues?club_id=${clubId}`);
+          setLeagues(leaguesResponse.data);
+        } catch (err) {
+          console.error('Error fetching leagues:', err);
+          setError('Unable to load leagues for this club. Please try again later.');
+          setLeagues([]);
+        }
       }
       
       setLoading(false);
