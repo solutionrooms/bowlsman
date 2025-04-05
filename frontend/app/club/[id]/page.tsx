@@ -147,6 +147,9 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         
         console.log('Club user map:', clubUserMap);
         
+        // Store club data in a local variable to ensure it's available
+        const currentClub = clubResponse.data;
+        
         // Fetch club members with role information - use trailing slash like in bowlers page
         const membersResponse = await api.get<any[]>(`/clubs/${clubId}/members/`, {
           headers: { Authorization: `Token ${token}` }
@@ -158,8 +161,8 @@ export default function ClubDetail({ params }: ClubDetailProps) {
         // Process the member data - the API now returns a more complete format
         const enrichedMembers = membersResponse.data.map((member: any) => ({
           ...member,
-          club: club!,  // We know club is not null here because we're inside the club fetch success block
-          club_name: club!.name,
+          club: currentClub,  // Use the local variable instead of club state
+          club_name: currentClub.name,
           created_at: member.created_at || new Date().toISOString(),
           last_login_at: member.last_login_at || null,
           user_details: member.user_details || {
