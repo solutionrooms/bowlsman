@@ -56,11 +56,29 @@ class FixtureDetailSerializer(FixtureSerializer):
             availabilities = obj.player_availabilities.all()
             return PlayerAvailabilitySerializer(availabilities, many=True).data
         else:
-            # Return only current user's availability
+            # Return only current user's availability as a single object (not an array)
             availability = obj.player_availabilities.filter(player=request.user).first()
             if availability:
-                return [PlayerAvailabilitySerializer(availability).data]
-            return []
+                return PlayerAvailabilitySerializer(availability).data
+            
+            # If no specific availability found, check for default availability
+            default_availability = DefaultAvailability.objects.filter(
+                league=obj.league,
+                player=request.user
+            ).first()
+            
+            if default_availability:
+                # Return a structured object that matches PlayerAvailabilitySerializer format
+                return {
+                    'fixture': obj.id,
+                    'player_id': request.user.id,
+                    'availability': default_availability.availability,
+                    'availability_display': default_availability.get_availability_display(),
+                    'notes': None
+                }
+            
+            # If no availability set at all, return None instead of empty array
+            return None
             
     def get_player_selections(self, obj):
         request = self.context.get('request')

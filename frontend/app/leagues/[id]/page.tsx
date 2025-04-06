@@ -1,3 +1,4 @@
+// frontend/app/leagues/[id]/page.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -83,53 +84,63 @@ interface UserData {
   };
 }
 
-const AvailabilitySelector = ({ fixture, leagueId, defaultAvailability, onAvailabilityUpdated }) => {
-  const [availability, setAvailability] = useState(fixture.player_availabilities?.availability || defaultAvailability || 'available');
+interface AvailabilitySelectorProps {
+  fixture: Fixture;
+  leagueId: number;
+  defaultAvailability: string | null;
+  onAvailabilityUpdated: (updatedFixture: Fixture) => void;
+}
+
+const AvailabilitySelector = ({ fixture, leagueId, defaultAvailability, onAvailabilityUpdated }: AvailabilitySelectorProps) => {
+  // The initial values should prioritize user-set values over defaults
+  const [availability, setAvailability] = useState(
+    fixture.player_availabilities?.availability || defaultAvailability || 'available'
+  );
   const [notes, setNotes] = useState(fixture.player_availabilities?.notes || '');
   const [loading, setLoading] = useState(false);
-  const [showNotes, setShowNotes] = useState(false);
   const [error, setError] = useState('');
-  const notesRef = useRef(null);
-
+  
   useEffect(() => {
-    // Update local state if the fixture's availability changes
+    // Update local state if the fixture's availability data changed
     if (fixture.player_availabilities) {
+      // Always use explicitly set availability if it exists
       setAvailability(fixture.player_availabilities.availability);
       setNotes(fixture.player_availabilities.notes || '');
+    } else if (defaultAvailability && !fixture.player_availabilities) {
+      // Only apply default availability when there's no specific user setting
+      setAvailability(defaultAvailability);
     }
-  }, [fixture.player_availabilities]);
+  }, [fixture.player_availabilities, defaultAvailability]);
 
-  useEffect(() => {
-    // Close notes dropdown when clicking outside
-    function handleClickOutside(event) {
-      if (notesRef.current && !notesRef.current.contains(event.target)) {
-        setShowNotes(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [notesRef]);
-
-  const handleAvailabilityChange = async (newAvailability) => {
+  // Combined handler for both availability and notes
+  const saveAvailability = async (newAvailability: string, newNotes: string = notes) => {
     try {
       setLoading(true);
       setError('');
       
       const response = await api.post(`fixtures/${fixture.id}/update_availability`, {
         availability: newAvailability,
-        notes: notes
+        notes: newNotes
       });
       
-      // Update the local state with the new availability
+      // Update the local state
       setAvailability(newAvailability);
+      setNotes(newNotes);
       
-      // Create an updated fixture object with the new availability
+      // Create an updated fixture object with the new data
       const updatedFixture = {
         ...fixture,
         player_availabilities: response.data
       };
+      
+      // Also store in localStorage as a backup
+      if (typeof window !== 'undefined') {
+        const storageKey = `fixture_${fixture.id}_availability`;
+        localStorage.setItem(storageKey, JSON.stringify({
+          availability: newAvailability,
+          notes: newNotes
+        }));
+      }
       
       // Call the parent component's callback to update the fixture in the league state
       onAvailabilityUpdated(updatedFixture);
@@ -142,39 +153,50 @@ const AvailabilitySelector = ({ fixture, leagueId, defaultAvailability, onAvaila
     }
   };
 
-  const handleNotesChange = async () => {
-    try {
-      setLoading(true);
-      setError('');
+  // On component mount, check localStorage for any cached availability data
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !fixture.player_availabilities) {
+      const storageKey = `fixture_${fixture.id}_availability`;
+      const cachedData = localStorage.getItem(storageKey);
       
-      const response = await api.post(`fixtures/${fixture.id}/update_availability`, {
-        availability: availability,
-        notes: notes
-      });
-      
-      // Create an updated fixture object with the new notes
-      const updatedFixture = {
-        ...fixture,
-        player_availabilities: response.data
-      };
-      
-      // Call the parent component's callback to update the fixture in the league state
-      onAvailabilityUpdated(updatedFixture);
-      
-      // Hide the notes input
-      setShowNotes(false);
-      
-    } catch (err) {
-      console.error('Error updating notes:', err);
-      setError('Failed to update notes');
-    } finally {
-      setLoading(false);
+      if (cachedData) {
+        try {
+          const { availability: cachedAvailability, notes: cachedNotes } = JSON.parse(cachedData);
+          if (cachedAvailability) {
+            setAvailability(cachedAvailability);
+          }
+          if (cachedNotes !== undefined) {
+            setNotes(cachedNotes);
+          }
+        } catch (err) {
+          console.error('Error parsing cached availability data:', err);
+        }
+      }
+    }
+  }, [fixture.id, fixture.player_availabilities]);
+
+  const handleAvailabilityChange = (newAvailability: string) => {
+    saveAvailability(newAvailability, notes);
+  };
+  
+  // Only track notes in state, save on blur
+  const handleNotesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNotes(e.target.value);
+  };
+  
+  // Save notes only when focus is lost
+  const handleNotesBlur = () => {
+    if (notes !== fixture.player_availabilities?.notes) {
+      saveAvailability(availability, notes);
     }
   };
   
-
-  const getAvailabilityColor = () => {
-    switch (availability) {
+  // Determine if current availability is using default - only true if no explicit player_availabilities record exists
+  const isUsingDefault = !fixture.player_availabilities;
+  
+  // Render different colored status badges based on availability
+  const getOptionClass = (value: string) => {
+    switch (value) {
       case 'available':
         return 'bg-green-100 text-green-800';
       case 'not_available':
@@ -185,82 +207,33 @@ const AvailabilitySelector = ({ fixture, leagueId, defaultAvailability, onAvaila
         return 'bg-gray-100 text-gray-800';
     }
   };
-
-  const getAvailabilityText = () => {
-    switch (availability) {
-      case 'available':
-        return 'Available';
-      case 'not_available':
-        return 'Not Available';
-      case 'prefer_not':
-        return 'Prefer Not';
-      default:
-        return 'Unknown';
+  
+  // Get display text with (default) suffix if applicable
+  const getOptionText = (value: string, label: string) => {
+    // Only add the (default) suffix if:
+    // 1. We're using the default availability (no explicit player_availabilities record exists)
+    // 2. This option value matches the current default availability setting
+    // 3. This option value matches the currently selected availability
+    if (isUsingDefault && value === defaultAvailability && value === availability) {
+      return `${label} (default)`;
     }
+    return label;
   };
 
   return (
     <div className="relative">
-      <div className="flex items-center space-x-2">
-        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getAvailabilityColor()}`}>
-          {getAvailabilityText()}
-        </div>
-        
-        <div className="relative">
-          <button
-            onClick={() => setShowNotes(!showNotes)}
-            className="text-gray-500 hover:text-gray-700"
-            aria-label="Add notes"
-            title={notes ? notes : "Add notes about your availability"}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clipRule="evenodd" />
-            </svg>
-          </button>
-          
-          {showNotes && (
-            <div 
-              ref={notesRef}
-              className="absolute z-10 mt-2 w-64 bg-white shadow-lg rounded-md p-3 right-0"
-            >
-              <textarea 
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="Add notes about your availability..."
-                value={notes || ''}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={3}
-              />
-              <div className="mt-2 flex justify-end space-x-2">
-                <button 
-                  className="px-3 py-1 text-xs text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-                  onClick={() => setShowNotes(false)}
-                >
-                  Cancel
-                </button>
-                <button 
-                  className="px-3 py-1 text-xs text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                  onClick={handleNotesChange}
-                  disabled={loading}
-                >
-                  Save
-                </button>
-              </div>
-              {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-            </div>
-          )}
-        </div>
-        
-      </div>
-      
-      <div className="mt-2">
+      <div className="grid grid-cols-1 gap-2 w-full">
+        {/* Combined dropdown with availability and note fields */}
         <div className="relative">
           <select
-            className={`appearance-none w-full px-3 py-1.5 text-xs font-medium rounded-md ${
-              availability === 'available' 
-                ? 'bg-green-100 text-green-800 border-green-300' 
-                : availability === 'not_available'
-                ? 'bg-red-100 text-red-800 border-red-300'
-                : 'bg-yellow-100 text-yellow-800 border-yellow-300'
+            className={`appearance-none w-full pl-3 pr-8 py-1.5 text-xs font-medium rounded-md ${
+              isUsingDefault 
+                ? 'bg-white text-gray-800 border-gray-300' 
+                : availability === 'available' 
+                  ? 'bg-green-100 text-green-800 border-green-300' 
+                  : availability === 'not_available'
+                  ? 'bg-red-100 text-red-800 border-red-300'
+                  : 'bg-yellow-100 text-yellow-800 border-yellow-300'
             } border focus:outline-none focus:ring-1 focus:ring-blue-500`}
             value={availability}
             onChange={(e) => handleAvailabilityChange(e.target.value)}
@@ -268,21 +241,21 @@ const AvailabilitySelector = ({ fixture, leagueId, defaultAvailability, onAvaila
           >
             <option 
               value="available" 
-              className="bg-green-100 text-green-800"
+              className={isUsingDefault && defaultAvailability === 'available' ? 'bg-white text-gray-800' : getOptionClass('available')}
             >
-              Available
+              {getOptionText('available', 'Available')}
             </option>
             <option 
               value="not_available" 
-              className="bg-red-100 text-red-800"
+              className={isUsingDefault && defaultAvailability === 'not_available' ? 'bg-white text-gray-800' : getOptionClass('not_available')}
             >
-              Not Available
+              {getOptionText('not_available', 'Not Available')}
             </option>
             <option 
               value="prefer_not" 
-              className="bg-yellow-100 text-yellow-800"
+              className={isUsingDefault && defaultAvailability === 'prefer_not' ? 'bg-white text-gray-800' : getOptionClass('prefer_not')}
             >
-              Prefer Not
+              {getOptionText('prefer_not', 'Prefer Not')}
             </option>
           </select>
           <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
@@ -290,6 +263,20 @@ const AvailabilitySelector = ({ fixture, leagueId, defaultAvailability, onAvaila
               <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
             </svg>
           </div>
+        </div>
+        
+        {/* Notes input field - always visible, no popup */}
+        <div className="relative">
+          <input 
+            type="text"
+            className="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+            placeholder="(Optional) note to captain"
+            value={notes || ''}
+            onChange={handleNotesChange}
+            onBlur={handleNotesBlur}
+            disabled={loading}
+          />
+          {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
         </div>
       </div>
     </div>
@@ -311,6 +298,7 @@ export default function TeamPage() {
   const [fixtureStats, setFixtureStats] = useState<Map<number, {available: number, selected: number}>>(new Map());
   const [fixtureSelections, setFixtureSelections] = useState<Map<number, boolean>>(new Map());
   const [defaultAvailability, setDefaultAvailability] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'info' | 'fixtures'>('fixtures');
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -343,9 +331,40 @@ export default function TeamPage() {
       setDefaultAvailability(availability);
       
       // Send request to the backend
-      await api.post(`leagues/${params.id}/default_availability/`, {
+      const response = await api.post(`leagues/${params.id}/default_availability/`, {
         availability: availability
       });
+      
+      // Store default availability in localStorage for persistence between page reloads
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`league_${params.id}_default_availability`, availability);
+      }
+      
+      // Apply the new default to all unset fixture availabilities
+      if (league && league.upcoming_fixtures) {
+        const updatedFixtures = league.upcoming_fixtures.map(fixture => {
+          // Only update fixtures that don't have player_availabilities set
+          if (!fixture.player_availabilities) {
+            return {
+              ...fixture,
+              player_availabilities: {
+                fixture: fixture.id,
+                availability: availability,
+                availability_display: availability === 'available' ? 'Available' : 
+                                      availability === 'not_available' ? 'Not Available' : 'Prefer Not',
+                notes: null
+              }
+            };
+          }
+          return fixture;
+        });
+        
+        // Update the league state with the updated fixtures
+        setLeague({
+          ...league,
+          upcoming_fixtures: updatedFixtures
+        });
+      }
       
       // Show a short confirmation message
       const message = document.createElement('div');
@@ -427,11 +446,25 @@ export default function TeamPage() {
         const leagueData = leagueResponse.data;
         setLeague(leagueData);
         
-        // Fetch user's default availability
+        // Check localStorage for cached default availability first
+        if (typeof window !== 'undefined') {
+          const cachedAvailability = localStorage.getItem(`league_${params.id}_default_availability`);
+          if (cachedAvailability) {
+            setDefaultAvailability(cachedAvailability);
+          }
+        }
+        
+        // Then fetch from backend to ensure data is up to date
         try {
           const defaultAvailResponse = await api.get(`leagues/${params.id}/default_availability/`);
           if (defaultAvailResponse.data && defaultAvailResponse.data.availability) {
-            setDefaultAvailability(defaultAvailResponse.data.availability);
+            const serverAvailability = defaultAvailResponse.data.availability;
+            setDefaultAvailability(serverAvailability);
+            
+            // Update localStorage with server value
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(`league_${params.id}_default_availability`, serverAvailability);
+            }
           }
         } catch (err) {
           console.error('Error fetching default availability:', err);
@@ -444,18 +477,9 @@ export default function TeamPage() {
           
           for (const fixture of leagueData.upcoming_fixtures) {
             try {
-              const selectionResponse = await api.get(`fixtures/${fixture.id}/team_availabilities`);
-              const teamAvailabilities = selectionResponse.data;
-              
-              if (Array.isArray(teamAvailabilities) && userData.user.id) {
-                // Find current user in the team availabilities
-                const userAvailability = teamAvailabilities.find(
-                  member => member.user && member.user.id === userData.user.id
-                );
-                
-                if (userAvailability) {
-                  selectionsMap.set(fixture.id, userAvailability.is_selected || false);
-                }
+              const selectionResponse = await api.get(`fixtures/${fixture.id}/my_selection`);
+              if (selectionResponse.data && 'is_selected' in selectionResponse.data) {
+                selectionsMap.set(fixture.id, selectionResponse.data.is_selected);
               }
             } catch (err) {
               console.error(`Error fetching selection for fixture ${fixture.id}:`, err);
@@ -496,7 +520,6 @@ export default function TeamPage() {
           // Fetch team availabilities for this fixture
           const response = await api.get(`fixtures/${fixture.id}/team_availabilities`);
           const teamAvailabilities = response.data;
-          console.log(`Fixture ${fixture.id} team availabilities:`, teamAvailabilities);
           
           let availableCount = 0;
           let selectedCount = 0;
@@ -522,7 +545,6 @@ export default function TeamPage() {
             available: availableCount,
             selected: selectedCount
           };
-          console.log(`Fixture ${fixture.id} stats:`, fixtureStats);
           statsMap.set(fixture.id, fixtureStats);
         } catch (error) {
           console.error(`Error fetching stats for fixture ${fixture.id}:`, error);
@@ -603,6 +625,33 @@ export default function TeamPage() {
             </div>
           </div>
         </div>
+        
+        <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex" aria-label="Tabs">
+              <button
+                onClick={() => setActiveTab('info')}
+                className={`${
+                  activeTab === 'info'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } w-1/2 py-4 px-1 text-center border-b-2 font-medium text-sm`}
+              >
+                Team Information
+              </button>
+              <button
+                onClick={() => setActiveTab('fixtures')}
+                className={`${
+                  activeTab === 'fixtures'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                } w-1/2 py-4 px-1 text-center border-b-2 font-medium text-sm`}
+              >
+                Upcoming Fixtures {league.upcoming_fixtures && league.upcoming_fixtures.length > 0 && `(${league.upcoming_fixtures.length})`}
+              </button>
+            </nav>
+          </div>
+        </div>
 
         {error && (
           <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
@@ -634,115 +683,119 @@ export default function TeamPage() {
           </div>
         )}
 
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Team Information</h3>
-                <dl className="grid grid-cols-1 gap-4">
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Club</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{league.club.name}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Season</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{league.season}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Captain</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
-                      {league.captain ? `${league.captain.first_name} ${league.captain.last_name}` : 'None'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Deputy</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
-                      {league.deputy ? `${league.deputy.first_name} ${league.deputy.last_name}` : 'None'}
-                    </dd>
-                  </div>
-                  {league.league_table_link && (
+        {activeTab === 'info' && (
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Team Information</h3>
+                  <dl className="grid grid-cols-1 gap-4">
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">League Table</dt>
+                      <dt className="text-sm font-medium text-gray-500">Club</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{league.club.name}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Season</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{league.season}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Captain</dt>
                       <dd className="mt-1 text-sm text-gray-900">
-                        <a
-                          href={league.league_table_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          View League Table
-                        </a>
+                        {league.captain ? `${league.captain.first_name} ${league.captain.last_name}` : 'None'}
                       </dd>
                     </div>
-                  )}
-                  {league.team_link && (
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Team Website</dt>
+                      <dt className="text-sm font-medium text-gray-500">Deputy</dt>
                       <dd className="mt-1 text-sm text-gray-900">
-                        <a
-                          href={league.team_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          Visit Team Website
-                        </a>
+                        {league.deputy ? `${league.deputy.first_name} ${league.deputy.last_name}` : 'None'}
                       </dd>
                     </div>
-                  )}
-                </dl>
-              </div>
+                    {league.league_table_link && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">League Table</dt>
+                        <dd className="mt-1 text-sm text-gray-900">
+                          <a
+                            href={league.league_table_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            View League Table
+                          </a>
+                        </dd>
+                      </div>
+                    )}
+                    {league.team_link && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Team Website</dt>
+                        <dd className="mt-1 text-sm text-gray-900">
+                          <a
+                            href={league.team_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            Visit Team Website
+                          </a>
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
 
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">Team Members</h3>
-                  {canManage && (
-                    <Link
-                      href={`/leagues/${league.id}/members/manage`}
-                      className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      Manage Members
-                    </Link>
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-medium text-gray-900">Team Members</h3>
+                    {canManage && (
+                      <Link
+                        href={`/leagues/${league.id}/members/manage`}
+                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      >
+                        Manage Members
+                      </Link>
+                    )}
+                  </div>
+                  {league.members.length > 0 ? (
+                    <ul className="divide-y divide-gray-200">
+                      {league.members.map((member) => (
+                        <li key={member.id} className="py-3">
+                          <div className="flex items-center space-x-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {member.user.first_name} {member.user.last_name}
+                              </p>
+                              <p className="text-sm text-gray-500 truncate">
+                                {member.user.username}
+                              </p>
+                            </div>
+                            <div className="flex-shrink-0 text-sm text-gray-500">
+                              Joined {new Date(member.joined_at).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-gray-500">No members found</p>
                   )}
                 </div>
-                {league.members.length > 0 ? (
-                  <ul className="divide-y divide-gray-200">
-                    {league.members.map((member) => (
-                      <li key={member.id} className="py-3">
-                        <div className="flex items-center space-x-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {member.user.first_name} {member.user.last_name}
-                            </p>
-                            <p className="text-sm text-gray-500 truncate">
-                              {member.user.username}
-                            </p>
-                          </div>
-                          <div className="flex-shrink-0 text-sm text-gray-500">
-                            Joined {new Date(member.joined_at).toLocaleDateString()}
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-gray-500">No members found</p>
-                )}
               </div>
             </div>
           </div>
+        )}
 
-          {/* Fixtures Section */}
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg mt-6">
+        {/* Fixtures Section */}
+        {activeTab === 'fixtures' && (
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
             <div className="px-4 py-5 sm:p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Upcoming Fixtures</h3>
                 {canManage && (
                   <Link
-                    href={`/leagues/${league.id}/members/manage`}
+                    href={`/leagues/${league.id}/fixtures/manage`}
                     className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-600 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                   >
-                    Manage Team
+                    Manage Fixtures
                   </Link>
                 )}
               </div>
@@ -819,17 +872,18 @@ export default function TeamPage() {
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {league.upcoming_fixtures.map((fixture) => (
                         <tr key={fixture.id} className="hover:bg-gray-50">
-                          <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-blue-600">
+                          <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
                             {fixture.opponent}
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                            {fixture.venue === 'home' ? 'Home' : 'Away'}
+                            {fixture.venue}
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                            {new Date(fixture.fixture_date).toLocaleDateString('en-GB', { 
-                              weekday: 'short', 
-                              day: 'numeric', 
-                              month: 'short' 
+                            {new Date(fixture.fixture_date).toLocaleDateString(undefined, {
+                              weekday: 'short',
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
                             })}
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
@@ -847,7 +901,7 @@ export default function TeamPage() {
                                       ? 'bg-red-100 text-red-800' // No available players
                                       : fixtureStats.get(fixture.id)?.selected === 0 
                                         ? 'bg-yellow-100 text-yellow-800' // Available but none selected
-                                        : fixtureStats.get(fixture.id)?.selected >= fixtureStats.get(fixture.id)?.available
+                                        : fixtureStats.get(fixture.id)?.selected! >= fixtureStats.get(fixture.id)?.available!
                                           ? 'bg-green-100 text-green-800' // All available players selected
                                           : 'bg-blue-100 text-blue-800' // Some selected
                                   }`}
@@ -923,8 +977,8 @@ export default function TeamPage() {
               )}
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
-} 
+}

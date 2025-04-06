@@ -960,6 +960,38 @@ class FixtureViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
         
     @action(detail=True, methods=['get'])
+    def my_selection(self, request, pk=None):
+        """
+        Get the current user's selection status for a fixture.
+        Available to any team member to check their own selection.
+        """
+        fixture = self.get_object()
+        
+        # Check if user is a member of the league
+        is_member = LeagueMember.objects.filter(
+            league=fixture.league, user=request.user
+        ).exists()
+        
+        if not is_member:
+            return Response(
+                {"error": "Only team members can view their selection status."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get selection record if it exists
+        selection = PlayerSelection.objects.filter(
+            fixture=fixture, player=request.user
+        ).first()
+        
+        response_data = {
+            'fixture': fixture.id,
+            'player_id': request.user.id,
+            'is_selected': selection.is_selected if selection else False
+        }
+        
+        return Response(response_data)
+    
+    @action(detail=True, methods=['get'])
     def team_availabilities(self, request, pk=None):
         """
         Get all team member availabilities for a fixture.
@@ -976,9 +1008,14 @@ class FixtureViewSet(viewsets.ModelViewSet):
             user=request.user, club=league.club, is_admin=True
         ).exists()
         
-        if not (is_captain_or_deputy or is_club_admin):
+        # Check if user is a team member (can only see their own availability)
+        is_team_member = LeagueMember.objects.filter(
+            league=fixture.league, user=request.user
+        ).exists()
+        
+        if not (is_captain_or_deputy or is_club_admin or is_team_member):
             return Response(
-                {"error": "Only captains, deputies, or club admins can view team availabilities."},
+                {"error": "Only team members, captains, deputies, or club admins can view availabilities."},
                 status=status.HTTP_403_FORBIDDEN
             )
         
