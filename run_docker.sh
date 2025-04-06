@@ -14,7 +14,6 @@ export POSTGRES_DB=webapp2
 export POSTGRES_USER=postgres
 export POSTGRES_PASSWORD=postgres
 export POSTGRES_HOST=bowlshub-postgres
-export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}"
 export NEXT_PUBLIC_API_URL=http://localhost:8010
 
 # Ensure Docker network exists
