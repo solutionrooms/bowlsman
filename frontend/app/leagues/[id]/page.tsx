@@ -83,8 +83,8 @@ interface UserData {
   };
 }
 
-const AvailabilitySelector = ({ fixture, leagueId, onAvailabilityUpdated }) => {
-  const [availability, setAvailability] = useState(fixture.player_availabilities?.availability || 'available');
+const AvailabilitySelector = ({ fixture, leagueId, defaultAvailability, onAvailabilityUpdated }) => {
+  const [availability, setAvailability] = useState(fixture.player_availabilities?.availability || defaultAvailability || 'available');
   const [notes, setNotes] = useState(fixture.player_availabilities?.notes || '');
   const [loading, setLoading] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
@@ -171,6 +171,7 @@ const AvailabilitySelector = ({ fixture, leagueId, onAvailabilityUpdated }) => {
       setLoading(false);
     }
   };
+  
 
   const getAvailabilityColor = () => {
     switch (availability) {
@@ -248,42 +249,48 @@ const AvailabilitySelector = ({ fixture, leagueId, onAvailabilityUpdated }) => {
             </div>
           )}
         </div>
+        
       </div>
       
-      <div className="mt-2 flex space-x-1">
-        <button
-          className={`px-2 py-1 text-xs font-medium rounded-md ${
-            availability === 'available' 
-              ? 'bg-green-600 text-white' 
-              : 'bg-green-100 text-green-800 hover:bg-green-200'
-          }`}
-          onClick={() => handleAvailabilityChange('available')}
-          disabled={loading || availability === 'available'}
-        >
-          Available
-        </button>
-        <button
-          className={`px-2 py-1 text-xs font-medium rounded-md ${
-            availability === 'not_available' 
-              ? 'bg-red-600 text-white' 
-              : 'bg-red-100 text-red-800 hover:bg-red-200'
-          }`}
-          onClick={() => handleAvailabilityChange('not_available')}
-          disabled={loading || availability === 'not_available'}
-        >
-          Not Available
-        </button>
-        <button
-          className={`px-2 py-1 text-xs font-medium rounded-md ${
-            availability === 'prefer_not' 
-              ? 'bg-yellow-600 text-white' 
-              : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-          }`}
-          onClick={() => handleAvailabilityChange('prefer_not')}
-          disabled={loading || availability === 'prefer_not'}
-        >
-          Prefer Not
-        </button>
+      <div className="mt-2">
+        <div className="relative">
+          <select
+            className={`appearance-none w-full px-3 py-1.5 text-xs font-medium rounded-md ${
+              availability === 'available' 
+                ? 'bg-green-100 text-green-800 border-green-300' 
+                : availability === 'not_available'
+                ? 'bg-red-100 text-red-800 border-red-300'
+                : 'bg-yellow-100 text-yellow-800 border-yellow-300'
+            } border focus:outline-none focus:ring-1 focus:ring-blue-500`}
+            value={availability}
+            onChange={(e) => handleAvailabilityChange(e.target.value)}
+            disabled={loading}
+          >
+            <option 
+              value="available" 
+              className="bg-green-100 text-green-800"
+            >
+              Available
+            </option>
+            <option 
+              value="not_available" 
+              className="bg-red-100 text-red-800"
+            >
+              Not Available
+            </option>
+            <option 
+              value="prefer_not" 
+              className="bg-yellow-100 text-yellow-800"
+            >
+              Prefer Not
+            </option>
+          </select>
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+              <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+            </svg>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -301,11 +308,63 @@ export default function TeamPage() {
   const [userClubs, setUserClubs] = useState<Club[]>([]);
   const [userId, setUserId] = useState<number | null>(null);
   const [canManage, setCanManage] = useState(false);
+  const [fixtureStats, setFixtureStats] = useState<Map<number, {available: number, selected: number}>>(new Map());
+  const [fixtureSelections, setFixtureSelections] = useState<Map<number, boolean>>(new Map());
+  const [defaultAvailability, setDefaultAvailability] = useState<string | null>(null);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('currentClub');
     router.push('/');
+  };
+  
+  // Helper function to get tooltip text for the Availability/Selection badge
+  const getAvailabilityStatsTooltip = (fixtureId: number) => {
+    if (!fixtureStats.has(fixtureId)) return "No availability data";
+    
+    const stats = fixtureStats.get(fixtureId);
+    if (!stats) return "No availability data";
+    
+    if (stats.available === 0) {
+      return "No players available for this fixture";
+    } else if (stats.selected === 0) {
+      return "No players selected for this fixture";
+    } else if (stats.selected >= stats.available) {
+      return "All available players have been selected";
+    } else {
+      return `${stats.selected} out of ${stats.available} available players selected`;
+    }
+  };
+  
+  // Function to handle setting default availability
+  const handleSetDefaultAvailability = async (availability: string) => {
+    try {
+      // Update UI immediately for responsiveness
+      setDefaultAvailability(availability);
+      
+      // Send request to the backend
+      await api.post(`leagues/${params.id}/default_availability/`, {
+        availability: availability
+      });
+      
+      // Show a short confirmation message
+      const message = document.createElement('div');
+      message.className = 'fixed bottom-4 right-4 bg-green-100 text-green-800 px-4 py-2 rounded-lg shadow-lg';
+      message.innerText = `Default availability set to ${
+        availability === 'available' ? 'Available' : 
+        availability === 'not_available' ? 'Not Available' : 'Prefer Not'
+      }`;
+      document.body.appendChild(message);
+      
+      // Remove message after 3 seconds
+      setTimeout(() => {
+        document.body.removeChild(message);
+      }, 3000);
+      
+    } catch (err) {
+      console.error('Error setting default availability:', err);
+      setError('Failed to set default availability. Please try again.');
+    }
   };
 
   useEffect(() => {
@@ -365,7 +424,46 @@ export default function TeamPage() {
 
         // Get league details
         const leagueResponse = await api.get<League>(`leagues/${params.id}`);
-        setLeague(leagueResponse.data);
+        const leagueData = leagueResponse.data;
+        setLeague(leagueData);
+        
+        // Fetch user's default availability
+        try {
+          const defaultAvailResponse = await api.get(`leagues/${params.id}/default_availability/`);
+          if (defaultAvailResponse.data && defaultAvailResponse.data.availability) {
+            setDefaultAvailability(defaultAvailResponse.data.availability);
+          }
+        } catch (err) {
+          console.error('Error fetching default availability:', err);
+          // Default availability not set yet, that's ok
+        }
+        
+        // Fetch selection status for all fixtures for the current user
+        if (leagueData.upcoming_fixtures && leagueData.upcoming_fixtures.length > 0) {
+          const selectionsMap = new Map<number, boolean>();
+          
+          for (const fixture of leagueData.upcoming_fixtures) {
+            try {
+              const selectionResponse = await api.get(`fixtures/${fixture.id}/team_availabilities`);
+              const teamAvailabilities = selectionResponse.data;
+              
+              if (Array.isArray(teamAvailabilities) && userData.user.id) {
+                // Find current user in the team availabilities
+                const userAvailability = teamAvailabilities.find(
+                  member => member.user && member.user.id === userData.user.id
+                );
+                
+                if (userAvailability) {
+                  selectionsMap.set(fixture.id, userAvailability.is_selected || false);
+                }
+              }
+            } catch (err) {
+              console.error(`Error fetching selection for fixture ${fixture.id}:`, err);
+            }
+          }
+          
+          setFixtureSelections(selectionsMap);
+        }
         
         setLoading(false);
       } catch (err: any) {
@@ -385,6 +483,60 @@ export default function TeamPage() {
       setCanManage(hasPermission);
     }
   }, [userId, league, userClubs]);
+  
+  // Fetch availability and selection stats for fixtures when user is captain/deputy
+  useEffect(() => {
+    const fetchFixtureStats = async () => {
+      if (!league || !league.upcoming_fixtures || !canManage) return;
+      
+      const statsMap = new Map<number, {available: number, selected: number}>();
+      
+      for (const fixture of league.upcoming_fixtures) {
+        try {
+          // Fetch team availabilities for this fixture
+          const response = await api.get(`fixtures/${fixture.id}/team_availabilities`);
+          const teamAvailabilities = response.data;
+          console.log(`Fixture ${fixture.id} team availabilities:`, teamAvailabilities);
+          
+          let availableCount = 0;
+          let selectedCount = 0;
+          
+          if (Array.isArray(teamAvailabilities)) {
+            teamAvailabilities.forEach(member => {
+              // Count available players
+              if (member.availability) {
+                const status = typeof member.availability === 'object' ? member.availability.status : member.availability;
+                if (status === 'available') {
+                  availableCount++;
+                }
+              }
+              
+              // Count selected players
+              if (member.is_selected) {
+                selectedCount++;
+              }
+            });
+          }
+          
+          const fixtureStats = {
+            available: availableCount,
+            selected: selectedCount
+          };
+          console.log(`Fixture ${fixture.id} stats:`, fixtureStats);
+          statsMap.set(fixture.id, fixtureStats);
+        } catch (error) {
+          console.error(`Error fetching stats for fixture ${fixture.id}:`, error);
+          statsMap.set(fixture.id, { available: 0, selected: 0 });
+        }
+      }
+      
+      setFixtureStats(statsMap);
+    };
+
+    if (canManage && league) {
+      fetchFixtureStats();
+    }
+  }, [canManage, league]);
 
   if (loading) {
     return (
@@ -595,6 +747,55 @@ export default function TeamPage() {
                 )}
               </div>
               
+              {/* Default Availability Section */}
+              {league.members.some(member => member.user.id === userId) && (
+                <div className="bg-gray-50 p-4 rounded-lg mb-4 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-900">Default Availability</h4>
+                    <p className="text-xs text-gray-500 mt-1">
+                      This will be your default availability for all fixtures unless overridden.
+                    </p>
+                  </div>
+                  <div className="relative max-w-xs">
+                  <select
+                    className={`appearance-none w-full px-3 py-1.5 text-sm font-medium rounded-md ${
+                      defaultAvailability === 'available' 
+                        ? 'bg-green-100 text-green-800 border-green-300' 
+                        : defaultAvailability === 'not_available'
+                        ? 'bg-red-100 text-red-800 border-red-300'
+                        : 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                    } border focus:outline-none focus:ring-1 focus:ring-blue-500`}
+                    value={defaultAvailability || 'available'}
+                    onChange={(e) => handleSetDefaultAvailability(e.target.value)}
+                  >
+                    <option 
+                      value="available" 
+                      className="bg-green-100 text-green-800"
+                    >
+                      Available
+                    </option>
+                    <option 
+                      value="not_available" 
+                      className="bg-red-100 text-red-800"
+                    >
+                      Not Available
+                    </option>
+                    <option 
+                      value="prefer_not" 
+                      className="bg-yellow-100 text-yellow-800"
+                    >
+                      Prefer Not
+                    </option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                      <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                    </svg>
+                  </div>
+                </div>
+                </div>
+              )}
+              
               {league.upcoming_fixtures && league.upcoming_fixtures.length > 0 ? (
                 <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
                   <table className="min-w-full divide-y divide-gray-300">
@@ -605,7 +806,14 @@ export default function TeamPage() {
                         <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Fixture date</th>
                         <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">For</th>
                         <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Agst</th>
+                        {canManage && (
+                          <th scope="col" className="px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Avail/Selected</th>
+                        )}
                         <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Availability</th>
+                        <th scope="col" className="px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Selected</th>
+                        {canManage && (
+                          <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Actions</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
@@ -630,11 +838,34 @@ export default function TeamPage() {
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                             {fixture.against_score !== null ? fixture.against_score : '-'}
                           </td>
+                          {canManage && (
+                            <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                              {fixtureStats.has(fixture.id) ? (
+                                <span 
+                                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium cursor-help ${
+                                    fixtureStats.get(fixture.id)?.available === 0 
+                                      ? 'bg-red-100 text-red-800' // No available players
+                                      : fixtureStats.get(fixture.id)?.selected === 0 
+                                        ? 'bg-yellow-100 text-yellow-800' // Available but none selected
+                                        : fixtureStats.get(fixture.id)?.selected >= fixtureStats.get(fixture.id)?.available
+                                          ? 'bg-green-100 text-green-800' // All available players selected
+                                          : 'bg-blue-100 text-blue-800' // Some selected
+                                  }`}
+                                  title={getAvailabilityStatsTooltip(fixture.id)}
+                                >
+                                  {fixtureStats.get(fixture.id)?.available}/{fixtureStats.get(fixture.id)?.selected}
+                                </span>
+                              ) : (
+                                <span className="text-gray-500">-/-</span>
+                              )}
+                            </td>
+                          )}
                           <td className="whitespace-nowrap px-3 py-4 text-sm">
                             {league.members.some(member => member.user.id === userId) ? (
                               <AvailabilitySelector 
                                 fixture={fixture} 
                                 leagueId={league.id} 
+                                defaultAvailability={defaultAvailability}
                                 onAvailabilityUpdated={(updatedFixture) => {
                                   // Update the fixture in the league state
                                   const updatedFixtures = league.upcoming_fixtures.map(f => 
@@ -650,6 +881,31 @@ export default function TeamPage() {
                               <span className="text-gray-500">-</span>
                             )}
                           </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                            {fixtureSelections.has(fixture.id) ? (
+                              fixtureSelections.get(fixture.id) ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                  Selected
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                  Not Selected
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-gray-500">-</span>
+                            )}
+                          </td>
+                          {canManage && (
+                            <td className="whitespace-nowrap px-3 py-4 text-sm">
+                              <Link
+                                href={`/leagues/${league.id}/fixtures/manage/selection?fixtureId=${fixture.id}`}
+                                className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                              >
+                                Manage
+                              </Link>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

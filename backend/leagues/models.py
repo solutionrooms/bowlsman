@@ -126,4 +126,48 @@ class PlayerAvailability(models.Model):
         verbose_name_plural = 'Player availabilities'
         
     def __str__(self):
-        return f"{self.player.get_full_name()} - {self.get_availability_display()} for {self.fixture}" 
+        return f"{self.player.get_full_name()} - {self.get_availability_display()} for {self.fixture}"
+
+
+class PlayerSelection(models.Model):
+    """
+    Tracks selected players for a specific fixture.
+    """
+    fixture = models.ForeignKey(Fixture, on_delete=models.CASCADE, related_name='player_selections')
+    player = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='fixture_selections')
+    is_selected = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('fixture', 'player')
+        verbose_name_plural = 'Player selections'
+        
+    def __str__(self):
+        status = "Selected" if self.is_selected else "Not selected"
+        return f"{self.player.get_full_name()} - {status} for {self.fixture}"
+
+
+class DefaultAvailability(models.Model):
+    """
+    Stores a user's default availability setting for a specific league.
+    This is used as a fallback when the user hasn't set availability for a specific fixture.
+    """
+    AVAILABILITY_CHOICES = [
+        ('available', 'Available'),
+        ('not_available', 'Not Available'),
+        ('prefer_not', 'Prefer Not')
+    ]
+    
+    league = models.ForeignKey(League, on_delete=models.CASCADE, related_name='default_availabilities')
+    player = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='default_availabilities')
+    availability = models.CharField(max_length=15, choices=AVAILABILITY_CHOICES, default='available')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('league', 'player')
+        verbose_name_plural = 'Default availabilities'
+        
+    def __str__(self):
+        return f"{self.player.get_full_name()} - Default: {self.get_availability_display()} for {self.league.name}" 

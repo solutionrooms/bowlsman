@@ -11,11 +11,11 @@ import logging
 import calendar
 import logging
 
-from .models import League, LeagueMember, PlayerNameMapping, Fixture, PlayerAvailability
+from .models import League, LeagueMember, PlayerNameMapping, Fixture, PlayerAvailability, PlayerSelection, DefaultAvailability
 from .serializers import (
     LeagueSerializer, LeagueDetailSerializer, LeagueMemberSerializer, 
     PlayerNameMappingSerializer, FixtureSerializer, FixtureDetailSerializer,
-    PlayerAvailabilitySerializer
+    PlayerAvailabilitySerializer, PlayerSelectionSerializer, DefaultAvailabilitySerializer
 )
 from users.models import Club, ClubUser
 from messaging.models import Message
@@ -302,6 +302,74 @@ class LeagueViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=True, methods=['get', 'post'])
+    def default_availability(self, request, pk=None):
+        """
+        Get or set the current user's default availability setting for this league.
+        """
+        league = self.get_object()
+        user = request.user
+        
+        # Check if user is a member of the league
+        is_member = LeagueMember.objects.filter(
+            league=league, user=user
+        ).exists()
+        
+        if not is_member:
+            return Response(
+                {"error": "You must be a member of this league to get default availability."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # For GET requests - retrieve current default availability
+        if request.method == 'GET':
+            # Get default availability if it exists
+            default_availability = DefaultAvailability.objects.filter(
+                league=league, player=user
+            ).first()
+            
+            if default_availability:
+                serializer = DefaultAvailabilitySerializer(default_availability)
+                return Response(serializer.data)
+            else:
+                # Return a default value if not set
+                return Response({
+                    'league': league.id,
+                    'player_id': user.id,
+                    'availability': 'available',
+                    'availability_display': 'Available'
+                })
+        
+        # For POST requests - set default availability
+        # Validate input
+        availability_status = request.data.get('availability')
+        
+        if not availability_status:
+            return Response(
+                {"error": "Availability status is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if availability status is valid
+        valid_statuses = [choice[0] for choice in DefaultAvailability.AVAILABILITY_CHOICES]
+        if availability_status not in valid_statuses:
+            return Response(
+                {"error": f"Invalid availability status. Must be one of: {', '.join(valid_statuses)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update or create default availability
+        default_availability, created = DefaultAvailability.objects.update_or_create(
+            league=league,
+            player=user,
+            defaults={
+                'availability': availability_status
+            }
+        )
+        
+        serializer = DefaultAvailabilitySerializer(default_availability)
+        return Response(serializer.data)
+        
     @action(detail=True, methods=['post'])
     def create_name_mapping(self, request, pk=None):
         """
@@ -824,12 +892,21 @@ class FixtureViewSet(viewsets.ModelViewSet):
             serializer = PlayerAvailabilitySerializer(availability)
             return Response(serializer.data)
         else:
+            # Try to get default availability
+            default_availability = DefaultAvailability.objects.filter(
+                league=fixture.league, player=request.user
+            ).first()
+            
+            default_status = 'available'
+            if default_availability:
+                default_status = default_availability.availability
+            
             # Return empty data with default values
             return Response({
                 'fixture': fixture.id,
                 'player_id': request.user.id,
-                'availability': 'available',
-                'availability_display': 'Available',
+                'availability': default_status,
+                'availability_display': dict(PlayerAvailability.AVAILABILITY_CHOICES).get(default_status, 'Available'),
                 'notes': None
             })
             
@@ -912,11 +989,34 @@ class FixtureViewSet(viewsets.ModelViewSet):
         availabilities = PlayerAvailability.objects.filter(fixture=fixture)
         availabilities_dict = {a.player_id: a for a in availabilities}
         
+        # Get all selections for this fixture
+        selections = PlayerSelection.objects.filter(fixture=fixture)
+        selections_dict = {s.player_id: s for s in selections}
+        
+        # Get all default availabilities for this league
+        default_availabilities = DefaultAvailability.objects.filter(league=league)
+        default_avail_dict = {da.player_id: da for da in default_availabilities}
+        
         # Build response with all members and their availabilities
         result = []
         for member in members:
             user = member.user
             availability = availabilities_dict.get(user.id)
+            selection = selections_dict.get(user.id)
+            default_avail = default_avail_dict.get(user.id)
+            
+            # If no specific availability is set, use default
+            avail_status = 'available'
+            avail_display = 'Available'
+            avail_notes = None
+            
+            if availability:
+                avail_status = availability.availability
+                avail_display = availability.get_availability_display()
+                avail_notes = availability.notes
+            elif default_avail:
+                avail_status = default_avail.availability
+                avail_display = default_avail.get_availability_display()
             
             member_data = {
                 'user': {
@@ -927,15 +1027,77 @@ class FixtureViewSet(viewsets.ModelViewSet):
                     'display_name': f"{user.first_name} {user.last_name}"
                 },
                 'availability': {
-                    'status': availability.availability if availability else 'available',
-                    'status_display': availability.get_availability_display() if availability else 'Available',
-                    'notes': availability.notes if availability else None
-                }
+                    'status': avail_status,
+                    'status_display': avail_display,
+                    'notes': avail_notes
+                },
+                'is_selected': selection.is_selected if selection else False
             }
             
             result.append(member_data)
         
         return Response(result)
+        
+    @action(detail=True, methods=['post'])
+    def update_team_selection(self, request, pk=None):
+        """
+        Update the team selection for a fixture.
+        Only available to captains, deputies, and club admins.
+        """
+        fixture = self.get_object()
+        league = fixture.league
+        
+        # Check if user is captain or deputy
+        is_captain_or_deputy = (league.captain == request.user or league.deputy == request.user)
+        
+        # Check if user is club admin
+        is_club_admin = ClubUser.objects.filter(
+            user=request.user, club=league.club, is_admin=True
+        ).exists()
+        
+        if not (is_captain_or_deputy or is_club_admin):
+            return Response(
+                {"error": "Only captains, deputies, or club admins can update team selections."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get the selected player IDs from the request
+        player_ids = request.data.get('player_ids', [])
+        
+        if not isinstance(player_ids, list):
+            return Response(
+                {"error": "Player IDs must be provided as a list."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get all league members
+        league_members = LeagueMember.objects.filter(league=league)
+        league_member_ids = [member.user_id for member in league_members]
+        
+        # Validate that all player IDs are members of the league
+        for player_id in player_ids:
+            if player_id not in league_member_ids:
+                return Response(
+                    {"error": f"Player ID {player_id} is not a member of this league."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Clear all existing selections for this fixture
+        PlayerSelection.objects.filter(fixture=fixture).delete()
+        
+        # Create new selections for selected players
+        selections = []
+        for player_id in player_ids:
+            selection = PlayerSelection.objects.create(
+                fixture=fixture,
+                player_id=player_id,
+                is_selected=True
+            )
+            selections.append(selection)
+        
+        # Return the updated selections
+        serializer = PlayerSelectionSerializer(selections, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class LeagueMemberViewSet(viewsets.ModelViewSet):
     """

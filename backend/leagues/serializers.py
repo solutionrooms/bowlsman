@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import League, LeagueMember, PlayerNameMapping, Fixture, PlayerAvailability
+from .models import League, LeagueMember, PlayerNameMapping, Fixture, PlayerAvailability, PlayerSelection, DefaultAvailability
 from users.serializers import UserSerializer, ClubSerializer
 
 class LeagueMemberSerializer(serializers.ModelSerializer):
@@ -30,17 +30,58 @@ class FixtureSerializer(serializers.ModelSerializer):
 
 class FixtureDetailSerializer(FixtureSerializer):
     player_availabilities = serializers.SerializerMethodField()
+    player_selections = serializers.SerializerMethodField()
     
     class Meta(FixtureSerializer.Meta):
-        fields = FixtureSerializer.Meta.fields + ['player_availabilities']
+        fields = FixtureSerializer.Meta.fields + ['player_availabilities', 'player_selections']
     
     def get_player_availabilities(self, obj):
-        # Only return availability for the current user when requested
         request = self.context.get('request')
-        if request and hasattr(request, 'user') and request.user.is_authenticated:
+        if not request or not hasattr(request, 'user') or not request.user.is_authenticated:
+            return None
+            
+        # Check if user is captain/deputy of the league or club admin
+        is_team_manager = False
+        league = obj.league
+        if league.captain == request.user or league.deputy == request.user:
+            is_team_manager = True
+        else:
+            # Check if user is club admin
+            user_club_role = request.user.club_memberships.filter(club=league.club).first()
+            if user_club_role and user_club_role.is_admin:
+                is_team_manager = True
+        
+        if is_team_manager:
+            # Return all availabilities for captain/deputy
+            availabilities = obj.player_availabilities.all()
+            return PlayerAvailabilitySerializer(availabilities, many=True).data
+        else:
+            # Return only current user's availability
             availability = obj.player_availabilities.filter(player=request.user).first()
             if availability:
-                return PlayerAvailabilitySerializer(availability).data
+                return [PlayerAvailabilitySerializer(availability).data]
+            return []
+            
+    def get_player_selections(self, obj):
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user') or not request.user.is_authenticated:
+            return None
+            
+        # Check if user is captain/deputy of the league or club admin
+        is_team_manager = False
+        league = obj.league
+        if league.captain == request.user or league.deputy == request.user:
+            is_team_manager = True
+        else:
+            # Check if user is club admin
+            user_club_role = request.user.club_memberships.filter(club=league.club).first()
+            if user_club_role and user_club_role.is_admin:
+                is_team_manager = True
+        
+        if is_team_manager:
+            # Return all selections for captain/deputy
+            selections = obj.player_selections.all()
+            return PlayerSelectionSerializer(selections, many=True).data
         return None
 
 class LeagueSerializer(serializers.ModelSerializer):
@@ -89,7 +130,11 @@ class LeagueDetailSerializer(LeagueSerializer):
     def get_upcoming_fixtures(self, obj):
         from datetime import date
         fixtures = obj.fixtures.filter(fixture_date__gte=date.today()).order_by('fixture_date')
-        return FixtureSerializer(fixtures, many=True).data
+        
+        # Use the FixtureDetailSerializer for more information
+        request = self.context.get('request')
+        context = {'request': request} if request else {}
+        return FixtureDetailSerializer(fixtures, many=True, context=context).data
 
 class PlayerNameMappingSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -114,5 +159,38 @@ class PlayerAvailabilitySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'fixture', 'player', 'player_id', 'availability', 
             'availability_display', 'notes', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class PlayerSelectionSerializer(serializers.ModelSerializer):
+    player = UserSerializer(read_only=True)
+    player_id = serializers.IntegerField(write_only=True)
+    player_name = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = PlayerSelection
+        fields = [
+            'id', 'fixture', 'player', 'player_id', 'player_name',
+            'is_selected', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+        
+    def get_player_name(self, obj):
+        if obj.player:
+            return f"{obj.player.first_name} {obj.player.last_name}"
+        return ""
+
+
+class DefaultAvailabilitySerializer(serializers.ModelSerializer):
+    player = UserSerializer(read_only=True)
+    player_id = serializers.IntegerField(write_only=True)
+    availability_display = serializers.CharField(source='get_availability_display', read_only=True)
+    
+    class Meta:
+        model = DefaultAvailability
+        fields = [
+            'id', 'league', 'player', 'player_id', 'availability', 
+            'availability_display', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at'] 
